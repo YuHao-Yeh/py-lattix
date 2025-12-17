@@ -1,0 +1,16 @@
+# cache
+.*_cache
+__pycache__/
+
+# coverage
+.coverage*
+htmlcov
+
+.vscode/
+.github
+
+practice*
+
+# temp files
+tmp/
+tmp*

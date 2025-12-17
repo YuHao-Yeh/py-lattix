@@ -1,0 +1,44 @@
+├── .gitignore
+├── .vscode/
+│   └── settings.json
+├── __init__.py
+├── core/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── abstract.py
+│   ├── adapters.py
+│   ├── lattix.py
+│   ├── lattix.pyi
+│   ├── error.py
+│   ├── mixins.py
+│   ├── safe_yaml.py
+│   └── utils.py
+├── pyproject.toml
+├── requirements.txt
+├── setup.py
+├── test/
+│   ├── __init__.py
+│   ├── run/
+│   │   ├── run_test.bat
+│   │   ├── run_test.ps1
+│   │   ├── run_test.py
+│   │   └── run_test.sh
+│   ├── test_abstract.py
+│   ├── test_adapters.py
+│   ├── test_lattix/
+│   │   ├── test_00_import.py
+│   │   ├── test_01_init_and_construct.py
+│   │   ├── test_02_prop_and_attr.py
+│   │   ├── test_03_core_methods.py
+│   │   ├── test_04_structure.py
+│   │   ├── test_05_type_system.py
+│   │   ├── test_06_operations.py
+│   │   ├── test_07_leaves.py
+│   │   ├── test_08_convert,py
+│   │   ├── test_09_representation.py
+│   │   ├── test_10_ingegration.py
+│   │   └── test_11_threading.py
+│   ├── test_init.py
+│   └── test_safe_yaml.py
+└── workflows/
+    └── test.yml

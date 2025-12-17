@@ -1,0 +1,143 @@
+from _thread import LockType, RLock as RLockType
+from collections.abc import Mapping
+from types import TracebackType
+from typing import Any, ClassVar, Literal, Protocol, TypeVar
+from typing_extensions import Self
+from abc import ABCMeta, abstractmethod
+
+from ..utils.types import StyleHandler, SetType, StyleRegistry, TypeType
+
+NotImplementedType = Literal[NotImplemented]
+_KT = TypeVar("_KT")
+_VT = TypeVar("_VT")
+
+
+class _HasChildren(Protocol):
+    children: Mapping[str, Any]
+
+class ThreadingMixin(metaclass=ABCMeta):
+    """
+    Mixin providing thread-safety configuration and lock inheritance.
+    """
+
+    # ---------- Private attributes ----------
+    _ts_level: int
+    _lock: LockType | None
+    _rlock: RLockType | None
+    _detached: bool
+
+    # ---------- Init ----------
+    def _init_threading(self, parent: ThreadingMixin | None = ..., level: int = ...) -> None: ...
+    @staticmethod
+    def _validate_level(level: int) -> None: ...
+    @staticmethod
+    def _validate_parent(parent: Any) -> Literal[True]: ...
+    @staticmethod
+    def _validate_attachable(obj: Any) -> Literal[True]: ...
+
+    # ---------- Properties ----------
+    @property
+    def ts_level(self) -> int: ...
+    @ts_level.setter
+    def ts_level(self, level: int) -> None: ...
+
+    # ---------- Propagation ----------
+    @staticmethod
+    @abstractmethod
+    def _propagate_lock(
+        obj: Any,
+        level: int,
+        lock: LockType | None,
+        rlock: RLockType | None,
+        seen: SetType[Any] | None = ...,
+    ) -> None: ...
+
+    def propagate_lock(
+        self,
+        level: int,
+        lock: LockType | None,
+        rlock: RLockType | None,
+        seen: SetType[Any] | None = ...,
+    ) -> None: ...
+
+    # ---------- Lock state management ----------
+    def detach_thread(self, clear_locks: bool = ...) -> None: ...
+    def attach_thread(self, parent: Any) -> None: ...
+    def transplant_thread(self, parent: Any) -> None: ...
+
+    # ---------- Context manager ----------
+    def __enter__(self) -> ThreadingMixin: ...
+    def __exit__(self, exc_type: TypeType[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None: ...
+
+    # ---------- Lock operations ----------
+    def acquire(self, blocking: bool = ..., timeout: float = ...) -> bool: ...
+    def release(self) -> None: ...
+
+    # ---------- Debugging ----------
+    def _describe_lock(self) -> str: ...
+
+
+class LogicalMixin:
+
+    @classmethod
+    @abstractmethod
+    def _construct(cls, data: Any, /, **kwargs: Any) -> Self: ...
+
+    def __and__(self, other: Any) -> Self | object: ...
+    def __rand__(self, other: Any) -> Self | object: ...
+    def __iand__(self, other: Any) -> Self: ...
+
+    @abstractmethod
+    def _and_impl(self, other: Any, inplace: bool = ...) -> Self: ...
+
+    def and_(self, other: Any) -> Self: ...
+
+    def __or__(self, other: Any) -> Self | object: ...
+    def __ror__(self, other: Any) -> Self | object: ...
+    def __ior__(self, other: Any) -> Self: ...
+
+    @abstractmethod
+    def _or_impl(self, other: Any, inplace: bool = ...) -> Self: ...
+
+    def or_(self, other: Any) -> Self: ...
+
+    def __sub__(self, other: Any) -> Self | object: ...
+    def __rsub__(self, other: Any) -> Self | object: ...
+    def __isub__(self, other: Any) -> Self: ...
+
+    @abstractmethod
+    def _sub_impl(self, other: Any, inplace: bool = ...) -> Self: ...
+
+    def sub(self, other: Any) -> Self: ...
+
+    def __xor__(self, other: Any) -> Self | object: ...
+    def __rxor__(self, other: Any) -> Self | object: ...
+    def __ixor__(self, other: Any) -> Self: ...
+
+    @abstractmethod
+    def _xor_impl(self, other: Any, inplace: bool = ...) -> Self: ...
+
+    def xor(self, other: Any) -> Self: ...
+
+
+class FormatterMixin:
+
+    _STYLE_HANDLERS: ClassVar[StyleRegistry]
+
+    @classmethod
+    def register_style(cls, name: str, func: StyleHandler) -> None: ...
+
+    def pprint(self, indent: int = ..., colored: bool = ..., compact: bool = ..., style: str = ..., **kwargs: Any) -> str: ...
+
+    @staticmethod
+    def _pprint_default( obj: Any, indent: int = ..., colored: bool = ..., compact: bool = ..., **kwargs: Any) -> str: ...
+
+    @staticmethod
+    def _pprint_json(obj: Any, indent: int = ..., **kwargs: Any) -> str: ...
+
+    @staticmethod
+    def _pprint_yaml(obj: Any, indent: int = ..., **kwargs: Any) -> str: ...
+
+    @staticmethod
+    def _pprint_repr(obj: Any, indent: int = ..., compact: bool = ..., **kwargs: Any) -> str: ...
+
