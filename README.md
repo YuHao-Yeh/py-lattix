@@ -1,7 +1,3 @@
-This is a professional **README.md** tailored specifically to the features and architecture of your **Lattix** library. 
-
----
-
 # Lattix
 
 [![PyPI version](https://img.shields.io/badge/pypi-v0.1.0-blue.svg)](https://pypi.org/project/py-lattix/)
