@@ -6,7 +6,6 @@ This is a professional **README.md** tailored specifically to the features and a
 
 [![PyPI version](https://img.shields.io/badge/pypi-v0.1.0-blue.svg)](https://pypi.org/project/py-lattix/)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![Coverage](https://img.shields.io/badge/coverage-)]
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Lattix** is a high-performance, hierarchical, and thread-safe mapping library for Python. It combines the flexibility of a dictionary with the power of tree-like structures, offering dot-access, path-traversal, and seamless integration with the modern Python data stack (NumPy, Pandas, PyTorch).
@@ -25,8 +24,30 @@ This is a professional **README.md** tailored specifically to the features and a
 
 ## Installation
 
+> **Note**: This project is currently in active development and is not yet available on PyPI.
+
+### 1. Install via Github:
+
 ```bash
-pip install py-lattix
+# Basic installation
+pip install git+https://github.com/YuHao-Yeh/py-lattix.git
+
+# Install with all features (NumPy, Pandas, YAML support, etc.)
+pip install "py-lattix[full] @ git+https://github.com/YuHao-Yeh/py-lattix.git"
+```
+
+### 2. Install from Source
+
+```bash
+# 1. Clone the repository
+$ git clone https://github.com/YuHao-Yeh/py-lattix
+$ cd py-lattix
+
+# 2. Install in editable mode
+pip install -e
+
+# 3. (Optional) Install testing dependencies
+pip install -e ".[test,full]"
 ```
 
 ---
@@ -122,19 +143,6 @@ Lattix supports multiple formats out of the box.
 - **YAML**: `d.yaml(enhanced=True)` (supports `Decimal`, `datetime`, `set`, and `Path` objects natively)
 - **Msgpack**: `d.msgpack()`
 - **Orjson**: `d.orjson()`
-
----
-
-## Project Structure
-
-```text
-lattix/
-├── _core/           # Internal logic (Mixins, Base Nodes, Metaclasses)
-├── adapters/        # Third-party integrations (NumPy, Pandas, etc.)
-├── structures/      # Primary Lattix mapping implementations
-├── serialization/   # YAML/JSON/Msgpack specialized logic
-└── utils/           # Shared types, common helpers, and exceptions
-```
 
 ---
 

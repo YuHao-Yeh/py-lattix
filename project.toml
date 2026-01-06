@@ -3,16 +3,33 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lattix"
+name = "py-lattix"
 version = "0.1.0"
 description = "A high-performance, hierarchical, thread-safe mapping library for Python."
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
-    {name = "YuHao-Yeh", email = "yuhao200.ok@gmail.com"}
+    {name = "Yeh Yuhao", email = "yuhao200.ok@gmail.com"}
 ]
 keywords = ["hierarchical", "config", "mapping", "dot-access", "attrdict, "thread-safe"]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
 dependencies = [
     "typing-extensions>=4.0; python_version < '3.10'",
 ]
@@ -21,6 +38,12 @@ dependencies = [
 yaml = ["pyyaml>=6.0"]
 msgpack = ["msgpack>=1.0"]
 orjson = ["orjson>=3.0"]
+
+test = [
+    "pytest",
+    "pytest-cov",
+]
+
 full = [
     "pyyaml>=6.0",
     "msgpack>=1.0",
@@ -30,14 +53,40 @@ full = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YuHao-Yeh/lattix"
-Documentation = ""
-Repository = ""
+Homepage = "https://github.com/YuHao-Yeh/py-lattix"
+Documentation = "https://github.com/YuHao-Yeh/py-lattix#readme"
+Repository = "https://github.com/YuHao-Yeh/py-lattix"
+Issues = "https://github.com/YuHao-Yeh/py-lattix/issues"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-include-package-data = true
+# --- Hatch Configuration (Replaces Setuptools) ---
+[tool.hatch.build.targets.wheel]
+packages = ["src/lattix"]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-include-package-data = true
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# --- Pytest Configuration ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--cov=lattix --cov-report=term-missing"
+filterwarnings = [
+    "ignore::DeprecationWarning"
+]
+
+# --- Coverage Configuration ---
+[tool.coverage.run]
+source = ["lattix"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+    "if logger.isEnabledFor",
+]
