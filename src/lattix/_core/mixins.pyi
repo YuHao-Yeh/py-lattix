@@ -1,4 +1,4 @@
-from _thread import LockType, RLock as RLockType
+from _thread import RLock as RLockType
 from collections.abc import Mapping
 from types import TracebackType
 from typing import Any, ClassVar, Literal, Protocol, TypeVar
@@ -21,15 +21,14 @@ class ThreadingMixin(metaclass=ABCMeta):
     """
 
     # ---------- Private attributes ----------
-    _ts_level: int
-    _lock: LockType | None
-    _rlock: RLockType | None
+    _locking_enabled: bool
+    _lock: RLockType | None
     _detached: bool
 
     # ---------- Init ----------
-    def _init_threading(self, parent: ThreadingMixin | None = ..., level: int = ...) -> None: ...
+    def _init_threading(self, parent: ThreadingMixin | None = ..., enable_lock: bool = ...) -> None: ...
     @staticmethod
-    def _validate_level(level: int) -> None: ...
+    def _validate_bool(value: Any) -> None: ...
     @staticmethod
     def _validate_parent(parent: Any) -> Literal[True]: ...
     @staticmethod
@@ -37,26 +36,24 @@ class ThreadingMixin(metaclass=ABCMeta):
 
     # ---------- Properties ----------
     @property
-    def ts_level(self) -> int: ...
-    @ts_level.setter
-    def ts_level(self, level: int) -> None: ...
+    def locking_enabled(self) -> bool: ...
+    @locking_enabled.setter
+    def locking_enabled(self, enable: bool) -> None: ...
 
     # ---------- Propagation ----------
     @staticmethod
     @abstractmethod
     def _propagate_lock(
         obj: Any,
-        level: int,
-        lock: LockType | None,
-        rlock: RLockType | None,
+        enable_lock: bool,
+        lock: RLockType | None,
         seen: SetType[Any] | None = ...,
     ) -> None: ...
 
     def propagate_lock(
         self,
-        level: int,
-        lock: LockType | None,
-        rlock: RLockType | None,
+        enable_lock: bool, 
+        lock: RLockType | None,
         seen: SetType[Any] | None = ...,
     ) -> None: ...
 

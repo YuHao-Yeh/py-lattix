@@ -1,5 +1,5 @@
-from . import abstract
-from .abstract import AbstractDict, MutableAbstractDict
+from . import interfaces
+from .interfaces import LattixMapping, MutableLattixMapping
 
 from . import base
 from .base import LattixNode
@@ -7,12 +7,14 @@ from .base import LattixNode
 from . import mixins
 from .mixins import ThreadingMixin, LogicalMixin, FormatterMixin
 
+from . import meta
+from .meta import LattixMeta
 
 __all__ = [
    # Abstract
-   "abstract",
-   "AbstractDict",
-   "MutableAbstractDict",
+   "interfaces",
+   "LattixMapping",
+   "MutableLattixMapping",
    # Base
    "base",
    "LattixNode",
@@ -21,4 +23,7 @@ __all__ = [
    "ThreadingMixin",
    "LogicalMixin",
    "FormatterMixin",
+   # Metaclass
+   "meta",
+   "LattixMeta",
 ]

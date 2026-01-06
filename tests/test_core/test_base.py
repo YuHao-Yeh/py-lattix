@@ -8,7 +8,7 @@ import pytest
 
 from src.lattix._core.base import LattixNode
 from src.lattix.utils.exceptions import (
-    DuplicatedKeyError, UnattachableError, UnexpectedNodeTypeError
+    DuplicatedKeyError, UnattachableError, UnexpectedNodeError
 )
 
 
@@ -56,9 +56,7 @@ class TestLattixNode:
 
     # --- 3. Hierarchy Operations (Attach/Detach/Transplant) ---
 
-    def test_attach_detach(self, caplog):
-        caplog.set_level(logging.DEBUG)
-        
+    def test_attach_detach(self):
         parent = LattixNode("parent")
         child = LattixNode("child")
 
@@ -68,26 +66,18 @@ class TestLattixNode:
         assert child.parent is parent
         assert "child" in parent
         
-        # Verify Logging
-        assert "[NODE:ATTACH] key='child' → parent='parent'" in caplog.text
-
         # Detach
-        caplog.clear()
         res = child.detach()
         assert res is child
         assert child.parent is None
         assert "child" not in parent
         
-        # Verify Logging
-        assert "[NODE:DETACH] key='child' ← parent='parent'" in caplog.text
 
         # Detach when already detached (no-op)
         child.detach() 
         assert child.parent is None
 
-    def test_transplant(self, caplog):
-        caplog.set_level(logging.DEBUG)
-
+    def test_transplant(self):
         old_p = LattixNode("old")
         new_p = LattixNode("new")
         child = LattixNode("child", parent=old_p)
@@ -100,9 +90,6 @@ class TestLattixNode:
         assert "moved_child" in new_p
         assert "child" not in old_p
         
-        # Verify detach log from old parent
-        assert "[NODE:DETACH] key='child' ← parent='old'" in caplog.text
-
         # Transplant without rename
         child.transplant(old_p)
         assert child.key == "moved_child"  # Keeps current key
@@ -113,7 +100,7 @@ class TestLattixNode:
 
     def test_validate_parent_node(self):
         child = LattixNode("c")
-        with pytest.raises(UnexpectedNodeTypeError):
+        with pytest.raises(UnexpectedNodeError):
             child.attach("Not a node")
 
     def test_validate_duplicate_key(self):

@@ -67,7 +67,6 @@ class TestDeepConvert:
         """Test converting a mapping to non-iterable."""
         data = {"a": 1}
         result = common.deep_convert(data, str)
-        print(result, str(data))
         assert result == "{'a': 1}"
 
     def test_mapping_unwrap_fail_not_list_or_tuple(self):
@@ -147,7 +146,7 @@ class TestSerialize:
         l.append(l)
         result = common.serialize(l)
         assert isinstance(result, list)
-        assert "circular_ref" in result[0]
+        assert "Circular" in result[0]
 
     def test_adapter_priority(self):
         """Test that adapter is checked before mapping/iterable logic."""

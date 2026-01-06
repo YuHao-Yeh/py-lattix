@@ -20,10 +20,9 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from ..adapters.generic import (
     construct_from_iterable, construct_from_mapping, get_adapter
 )
-from .compat import HAS_NUMPY, HAS_PANDAS, numpy as np, pandas as pd
+from . import compat
 from .types import (
-   _ATOMIC_BASE_TYPES, AtomicTypes, ScalarTypes,
-   TypeGuard, DictType, ListType
+    _ATOMIC_BASE_TYPES, AtomicTypes, ScalarTypes, TypeGuard, DictType, ListType
 )
 
 if TYPE_CHECKING:   # pragma: no cover
@@ -41,6 +40,11 @@ if TYPE_CHECKING:   # pragma: no cover
     
 _KT = TypeVar("_KT")
 _VT = TypeVar("_VT")
+
+HAS_NUMPY = compat.HAS_NUMPY
+HAS_PANDAS = compat.HAS_PANDAS
+numpy = np = compat.numpy
+pandas = pd = compat.pandas
 
 
 # ======================================================
@@ -172,10 +176,10 @@ def serialize(
     if is_primitive(obj):
         return obj
     
-    # 2. Cycle detection
+    # 2. Cycle Detection
     oid = id(obj)
     if oid in _seen:
-        return f"<circular_ref {type(obj).__name__}>"
+        return f"<Circular {type(obj).__name__} at {hex(oid)}>"
     _seen.add(oid)
 
     try:

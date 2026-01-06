@@ -4,6 +4,7 @@ from unittest.mock import ANY, MagicMock, patch
 
 import src.lattix.adapters.generic as adapters
 
+top_mod = "src.lattix"
 
 # --- Fixtures ---
 
@@ -141,10 +142,10 @@ class TestAdapters:
         mock_handler = MagicMock(side_effect=ValueError("Init Failed"))
         adapters._LAZY_LIBRARY_HANDLERS["badlib"] = mock_handler
         
-        with patch("src.lattix.adapters.generic.logger") as mock_logger:
+        with patch(f"{top_mod}.adapters.generic.logger") as mock_logger:
             adapters._ensure_library_adapters(BadLibObj())
             mock_handler.assert_called_once()
-            mock_logger.warning.assert_called()
+            mock_logger.error.assert_called()
 
     def test_ensure_library_adapters_edge_cases(self):
         # 1. Object without clean module (AttributeError branch)
@@ -157,9 +158,9 @@ class TestAdapters:
         class BadLib: __module__ = "badlib"
         adapters._LAZY_LIBRARY_HANDLERS["badlib"] = MagicMock(side_effect=ValueError)
         
-        with patch("src.lattix.adapters.generic.logger") as mock_log:
+        with patch(f"{top_mod}.adapters.generic.logger") as mock_log:
             adapters._ensure_library_adapters(BadLib())
-            mock_log.warning.assert_called()
+            mock_log.error.assert_called()
 
 
     # --- 4. Specific Library Adapters ---
@@ -169,7 +170,10 @@ class TestAdapters:
         Covers lines like 'if not np_pkg: return' inside register functions.
         We force get_module to return None.
         """
-        with patch("src.lattix.adapters.generic.get_module", return_value=None):
+        with patch(f"{top_mod}.utils.compat.HAS_NUMPY", False), \
+             patch(f"{top_mod}.utils.compat.HAS_PANDAS", False), \
+             patch(f"{top_mod}.utils.compat.HAS_TORCH", False), \
+             patch(f"{top_mod}.utils.compat.HAS_XARRAY", False):
             adapters._register_numpy_adapters()
             adapters._register_pandas_adapters()
             adapters._register_torch_adapters()
@@ -194,17 +198,19 @@ class TestAdapters:
         fake_np = MagicMock()
         fake_np.ndarray = FakeArray
 
-        # Case 1: Library Missing (get_module -> None)
+        # Case 1: Library Missing
         adapters._LAZY_LIBRARY_HANDLERS["numpy"] = adapters._register_numpy_adapters
-        with patch("src.lattix.adapters.generic.get_module", return_value=None):
+        with patch(f"{top_mod}.utils.compat.HAS_NUMPY", False), \
+             patch(f"{top_mod}.utils.compat.numpy", None):
             adapters.get_adapter(FakeArray())
             # Should not have registered adapter
             assert adapters.fqname_for_cls(FakeArray) not in adapters._ADAPTERS
         
         # Case 2: Library Present & Adapter Logic
         adapters._LAZY_LIBRARY_HANDLERS["numpy"] = adapters._register_numpy_adapters
-        with patch("src.lattix.adapters.generic.get_module", 
-                   side_effect=lambda name: fake_np if name=="numpy" else None):
+        with patch(f"{top_mod}.utils.compat.HAS_NUMPY", True), \
+             patch(f"{top_mod}.utils.compat.numpy", fake_np):
+
             # Trigger Resigtration
             adapter = adapters.get_adapter(FakeArray())
             assert adapter is not None
@@ -241,7 +247,7 @@ class TestAdapters:
 
         # Case 1: Missing
         adapters._LAZY_LIBRARY_HANDLERS["pandas"] = adapters._register_pandas_adapters
-        with patch.object(adapters, "get_module", return_value=None):
+        with patch(f"{top_mod}.utils.compat.HAS_PANDAS", False):
             adapters.get_adapter(FakeSeries())
             assert adapters.fqname_for_cls(FakeSeries) not in adapters._ADAPTERS
 
@@ -250,8 +256,8 @@ class TestAdapters:
 
         # Case 2: Present
         adapters._LAZY_LIBRARY_HANDLERS["pandas"] = adapters._register_pandas_adapters
-        with patch("src.lattix.adapters.generic.get_module", 
-                   side_effect=lambda name: fake_pd if name=="pandas" else None):
+        with patch(f"{top_mod}.utils.compat.HAS_PANDAS", True), \
+             patch(f"{top_mod}.utils.compat.pandas", fake_pd):
             # --- Test Series ---
             adapters.get_adapter(FakeSeries())
             
@@ -302,8 +308,9 @@ class TestAdapters:
         fake_torch.nn.Parameter = FakeParam
 
         adapters._LAZY_LIBRARY_HANDLERS["torch"] = adapters._register_torch_adapters
-        with patch("src.lattix.adapters.generic.get_module", 
-                   side_effect=lambda name: fake_torch if name=="torch" else None):
+        with patch(f"{top_mod}.utils.compat.HAS_TORCH", True), \
+             patch(f"{top_mod}.utils.compat.torch", fake_torch):
+
             # --- Test Tensor ---
             # Trigger
             adapters.get_adapter(FakeTensor())
@@ -335,13 +342,14 @@ class TestAdapters:
                 return []
         
         # Case 1: torch has no "nn" attribute
-        fake_torch_nn = MagicMock()
-        fake_torch_nn.Tensor = FakeTensor
-        del fake_torch_nn.nn
+        fake_torch_no_nn = MagicMock()
+        fake_torch_no_nn.Tensor = FakeTensor
+        del fake_torch_no_nn.nn
 
-        with patch("src.lattix.adapters.generic.get_module", return_value=fake_torch_nn), \
-            patch("src.lattix.adapters.generic.register_adapter") as mock_register:
-
+        with patch(f"{top_mod}.utils.compat.HAS_TORCH", True), \
+             patch(f"{top_mod}.utils.compat.torch", fake_torch_no_nn), \
+             patch(f"{top_mod}.adapters.generic.register_adapter") as mock_register:
+            
             # Call the registration function directly to test the logic
             adapters._register_torch_adapters()
 
@@ -357,8 +365,9 @@ class TestAdapters:
         fake_torch_param.nn = MagicMock()
         del fake_torch_param.nn.Parameter
 
-        with patch("src.lattix.adapters.generic.get_module", return_value=fake_torch_param), \
-            patch("src.lattix.adapters.generic.register_adapter") as mock_register:
+        with patch(f"{top_mod}.utils.compat.HAS_TORCH", True), \
+             patch(f"{top_mod}.utils.compat.torch", fake_torch_no_nn), \
+             patch(f"{top_mod}.adapters.generic.register_adapter") as mock_register:
 
             # Call the registration function directly to test the logic
             adapters._register_torch_adapters()
@@ -393,8 +402,9 @@ class TestAdapters:
         
         adapters._LAZY_LIBRARY_HANDLERS["xarray"] = adapters._register_xarray_adapters
         
-        with patch("src.lattix.adapters.generic.get_module", 
-                   side_effect=lambda name: fake_xr if name=="xarray" else None):
+        with patch(f"{top_mod}.utils.compat.HAS_XARRAY", True), \
+             patch(f"{top_mod}.utils.compat.xarray", fake_xr):
+
             adapters.get_adapter(FakeDataArray())
             
             # DataArray Logic
@@ -620,13 +630,13 @@ class TestConstruction:
 class TestPluginLogic:
     def test_plugin_discovery(self):
         # 1. Import Error (package level)
-        with patch("src.lattix.adapters.generic.import_module", side_effect=ImportError):
+        with patch(f"{top_mod}.adapters.generic.import_module", side_effect=ImportError):
             assert adapters.discover_and_register_plugins("missing_pkg") == []
 
         # 2. No __path__ (not a package)
         mock_mod = MagicMock()
         del mock_mod.__path__
-        with patch("src.lattix.adapters.generic.import_module", return_value=mock_mod):
+        with patch(f"{top_mod}.adapters.generic.import_module", return_value=mock_mod):
             assert adapters.discover_and_register_plugins("simple_mod") == []
 
         # 3. Iter modules (Success & Fail mixed)
@@ -634,7 +644,7 @@ class TestPluginLogic:
         mock_pkg.__path__ = ["/fake/path"]
         mock_pkg.__name__ = "mypkg"
         
-        with patch("src.lattix.adapters.generic.import_module") as mock_import:
+        with patch(f"{top_mod}.adapters.generic.import_module") as mock_import:
             mock_import.return_value = mock_pkg
             
             # pkgutil returns (finder, name, ispkg)
@@ -650,11 +660,11 @@ class TestPluginLogic:
                 
                 mock_import.side_effect = import_side_effect
                 
-                with patch("src.lattix.adapters.generic.logger") as mock_logger:
+                with patch(f"{top_mod}.adapters.generic.logger") as mock_logger:
                     found = adapters.discover_and_register_plugins("mypkg")
 
                     assert "good_plugin" in found
                     assert "bad_plugin" not in found
 
                     # Ensure warning was logged for bad_plugin
-                    mock_logger.warning.assert_called()
+                    mock_logger.error.assert_called()

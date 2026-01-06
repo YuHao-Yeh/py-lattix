@@ -1,7 +1,5 @@
 from . import generic
 from .generic import (
-   # module import
-   # has_module,
    # adapters
    fqname_for_cls,
    register_adapter,
@@ -13,6 +11,7 @@ from .generic import (
    unregister_constructor_defaults,
    get_defaults_registry,
    construct_from_iterable,
+   construct_from_mapping,
    # helpers
    discover_and_register_plugins,
 )
@@ -20,8 +19,6 @@ from .generic import (
 
 __all__ = [
    "generic",
-   # Module Import
-   # "has_module",
    # Adapters-Related
    "fqname_for_cls",
    "register_adapter",
@@ -34,6 +31,7 @@ __all__ = [
    "get_defaults_registry",
    # Constructions
    "construct_from_iterable",
+   "construct_from_mapping",
    # Plugins-Related
    "discover_and_register_plugins",
 ]

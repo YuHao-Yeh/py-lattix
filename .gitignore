@@ -1,16 +1,19 @@
-# cache
-.*_cache
+# Byte-compiled / optimized / DLL files
 __pycache__/
 
-# coverage
-.coverage*
-htmlcov
+# Unit test / coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
 
+# Environments
+.venv
 .vscode/
-.github
 
-practice*
-
-# temp files
+# other files
 tmp/
 tmp*
+analysis/
+legacy*

@@ -2,82 +2,85 @@ from __future__ import annotations
 
 __all__ = ["Lattix"]
 
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 import json
 import sys
-from threading import Lock, RLock
-from typing import TYPE_CHECKING, TypeVar, cast
+from threading import RLock
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-from .._core.abstract import MutableAbstractDict
+from .._core.interfaces import MutableLattixMapping
 from .._core.base import LattixNode
 from .._core.mixins import ThreadingMixin, LogicalMixin, FormatterMixin
+from .._core.meta import LattixMeta
 
 from ..adapters import construct_from_iterable
 
 from ..utils.common import (
     deep_convert, 
+    is_primitive,
     is_scalar, 
     scan_class_attrs, 
     serialize
 )
+from ..utils import compat
 from ..utils.exceptions import (
     # Import Exceptions
-    NoPyYAMLError,
+    OptionalImportError,
+    NodeError,
     # Payload Exceptions
-    InvalidJSONTypeError, InvalidJSONValueError, InvalidYAMLValueError,
-    NonPairIterableError, ArgTypeError,
+    PayloadError, UnsupportedPayloadError, InvalidPayloadError, ArgTypeError,
     # Internal Access
-    InvalidAttributeNameError, InternalAttributeError, 
-    ReservedNameConflictError, MissingAttributeError,
+    InvalidAttributeNameError, AttributeAccessDeniedError, 
+    AttributeNotFoundError, ModificationDeniedError,
     # Key Exceptions
-    KeyPathError, KeyNotFoundError, PathNotFoundError, UnexpectedNodeTypeError,
+    KeyPathError, KeyNotFoundError, PathNotFoundError, UnexpectedNodeError,
     # Operators
-    OperandTypeError,
+    OperandTypeError, UnsupportedOperatorError,
+)
+from ..utils.types import (
+    DictType, GenericAlias, ListType, TupleType, SetType
 )
 
 
-if TYPE_CHECKING:
-    from _thread import LockType, RLock as RLockType
+if TYPE_CHECKING:   # pragma: no cover
+    from _thread import RLock as RLockType
     from collections.abc import Callable
     from typing import Any, SupportsIndex
     from ..utils.types import (
        DictType, ListType, SetType, TupleType, TypeType,
-       ClassAttrSet, GenericAlias, JOIN_METHOD, MERGE_METHOD
+       ClassAttrSet, JOIN_METHOD, MERGE_METHOD
     )
     
-_S = TypeVar("_S")
 _T = TypeVar("_T")
-_T_co = TypeVar("_T_co", covariant=True)
 _KT = TypeVar("_KT")
 _VT = TypeVar("_VT")
-
-
 
 
 _sentinel = object()
 
 
 class Lattix(
-    MutableAbstractDict[_KT, _VT], 
+    MutableLattixMapping[_KT, _VT], 
     LattixNode, 
     ThreadingMixin, 
     LogicalMixin, 
-    FormatterMixin, 
+    FormatterMixin,
+    metaclass=LattixMeta,
 ):
     __slots__ = (
-        "_sep", "_lazy_create", "_ts_level", 
-        "_lock", "_rlock", "_detached"
+        "_sep", "_lazy_create", "_locking_enabled", "_lock", "_detached", 
+        "_frozen",
     )
     # ========== Class-level constants ==========
     __INTERNAL_ATTRS__: ClassAttrSet = {
-        "_lazy_create", "_sep", "_ts_level", "_lock", "_rlock", 
-        '_detached',
+        "_lazy_create", "_sep", "_locking_enabled", "_lock", '_detached', 
+        "_frozen",
     }
     __CLASS_ATTRS__: ClassAttrSet | None = None
 
@@ -90,26 +93,18 @@ class Lattix(
         parent: Any = None, 
         sep: str = "/", 
         lazy_create: bool = False, 
-        ts_level: int = 0, 
+        enable_lock: bool = False, 
         **kwargs: Any
     ):
         object.__setattr__(self, "_sep", sep)
         object.__setattr__(self, "_lazy_create", lazy_create)
         # threading slots
-        object.__setattr__(self, "_ts_level", 0)
+        object.__setattr__(self, "_locking_enabled", False)
         object.__setattr__(self, "_lock", None)
-        object.__setattr__(self, "_rlock", None)
         object.__setattr__(self, "_detached", True)
         
         LattixNode.__init__(self, key, parent)
-        self._init_threading(parent, ts_level)
-        
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"[DD:INIT] Lattix key={key}, "
-                f"parent={hex(id(parent)) if parent else None}, "
-                f"data={type(data).__name__}"
-            )
+        self._init_threading(parent, enable_lock)
         
         if data:
             self.update(data)
@@ -119,31 +114,35 @@ class Lattix(
         
         _ = self._get_class_attrs()
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.__CLASS_ATTRS__ = scan_class_attrs(cls)
+
     def __new__(cls, *args: Any, **kwargs: Any):
         return super().__new__(cls)
 
     def _config(self):
-        return self._sep, self._lazy_create, self._ts_level
+        return self._sep, self._lazy_create, self._locking_enabled
     
     @classmethod
     def _construct(
         cls, 
         mapping: Any, 
-        config: TupleType[str, Any, str, bool, int] = ("", None, "/", False, 0),
+        config: TupleType[str, Any, str, bool, bool] = ("", None, "/", False, False),
         /,
         **kwargs: Any,
     ):
-        key, parent, sep, lazy_create, ts_level = config
+        key, parent, sep, lazy_create, enable_lock = config
         return cls(mapping, key=key, parent=parent, sep=sep, 
-                   lazy_create=lazy_create, ts_level=ts_level, **kwargs)
+                   lazy_create=lazy_create, enable_lock=enable_lock, **kwargs)
 
-    def __getstate__(self) -> DictType[str, str | int | DictType[str, _VT] | None]:
+    def __getstate__(self) -> DictType[str, str | bool | DictType[str, _VT] | None]:
         return {
             "key" : self._key,
             "data" : dict(self._children),   # shallow copy
             "lazy" : self._lazy_create,
             "sep" : self._sep,
-            "thread" : self._ts_level,
+            "enable_lock" : self._locking_enabled,
         }
     
     def __setstate__(self, state: DictType[str, Any]):
@@ -151,7 +150,7 @@ class Lattix(
         super().__setattr__("_sep", state["sep"])
 
         LattixNode.__init__(self, state["key"], None)
-        ThreadingMixin._init_threading(self, None, state["thread"])
+        ThreadingMixin._init_threading(self, None, state["enable_lock"])
         self.update(state["data"])
 
     def __reduce__(self):
@@ -173,7 +172,7 @@ class Lattix(
     @classmethod
     def from_dict(cls, d: DictType[_KT, _VT], sep: str = "/"):
         """Create a Lattix from an existing dictionary."""
-        return cls(d, sep = sep)
+        return cls(d, sep=sep)
 
     @classmethod
     def from_json(
@@ -191,24 +190,41 @@ class Lattix(
                 return [convert(v) for v in cast(ListType[Any], obj)]
             return obj
 
+        if not compat.HAS_JSON:
+            raise OptionalImportError("JSON", "JSON deserialization")
+        
         try:
             if from_file:
                 with open(data, "r", encoding=encoding) as f:
                     parsed = json.load(f)
-            elif isinstance(data, bytes):
+            elif isinstance(data, (bytes, bytearray)):
                 parsed = json.loads(data.decode(encoding))
             elif isinstance(data, str):
                 parsed = json.loads(data)
             elif isinstance(data, dict):
                 return convert(data)
             else:
-                raise InvalidJSONTypeError(data)
-        except InvalidJSONTypeError:
+                raise UnsupportedPayloadError(func="from_json", value=data, ideal=(str, bytes, bytearray, dict))
+        except PayloadError:
             raise
         except Exception as e:
-            raise InvalidJSONValueError(data) from e
+            raise InvalidPayloadError(data, "JSON") from e
 
         return convert(parsed)
+
+    @classmethod
+    def from_orjson(cls, data):
+        if not compat.HAS_ORJSON:
+            raise OptionalImportError("orjson", "JSON deserialization", "orjson")
+        decoded = compat.orjson.loads(data)
+        return cls(decoded)
+
+    @classmethod
+    def from_msgpack(cls, data):
+        if not compat.HAS_MSGPACK:
+            raise OptionalImportError("MessagePack", "unpacking support", "msgpack")
+        unpacked = compat.msgpack.unpackb(data, raw=False)
+        return cls(unpacked)
 
     @classmethod
     def from_yaml(
@@ -219,9 +235,6 @@ class Lattix(
         from_file: bool = False, 
         enhanced: bool = False,
     ):
-        from ..serialization import yaml_safe_load
-        from ..utils.compat import yaml
-
         def convert(obj: Any) -> Any:
             if isinstance(obj, dict):
                 return cls({key: convert(v) for key, v in cast(DictType[_KT, _VT], obj).items()})
@@ -233,6 +246,9 @@ class Lattix(
                 return set(convert(v) for v in cast(SetType[Any], obj))
             return obj
 
+        if not compat.HAS_YAML:
+            raise OptionalImportError("PyYAML", "YAML deserialization", "pyyaml")
+
         try:
             if from_file:
                 with open(data, "r", encoding=encoding) as f:
@@ -241,21 +257,22 @@ class Lattix(
                 raw = data.decode(encoding)
             else:
                 raw = data
-            
+
             if enhanced:
+                from ..serialization import yaml_safe_load
                 parsed = yaml_safe_load(raw)
             else:
-                parsed = yaml.safe_load(raw)
+                parsed = compat.yaml.load(raw, Loader=compat.yaml.FullLoader)
         except Exception as e:
-            raise InvalidYAMLValueError(data) from e
+            raise InvalidPayloadError(data, "YAML") from e
 
         return convert(parsed)
 
     @classmethod
-    def _get_class_attrs(cls):
-        if cls.__CLASS_ATTRS__ is None:
+    def _get_class_attrs(cls, refresh: bool = False):
+        if cls.__CLASS_ATTRS__ is None or refresh:
             cls.__CLASS_ATTRS__ = scan_class_attrs(cls)
-        return cls.__CLASS_ATTRS__   
+        return cls.__CLASS_ATTRS__
 
     # ========== Properties ==========
     @property
@@ -264,12 +281,6 @@ class Lattix(
     
     @sep.setter
     def sep(self, symbol: str):
-        object.__setattr__(self, "_sep", symbol)
-
-        # cascade
-        # for child in self._children.values():
-        #     if isinstance(child, Lattix):
-        #         child.sep = symbol
         self._propagate_attrs(self, {"_sep": symbol})
 
     @property
@@ -278,12 +289,6 @@ class Lattix(
     
     @lazy_create.setter
     def lazy_create(self, value: bool):
-        # object.__setattr__(self, "_lazy_create", value)
-        
-        # cascade
-        # for child in self._children.values():
-        #     if isinstance(child, Lattix):
-        #         child.lazy_create = value
         self._propagate_attrs(self, {"_lazy_create": value})
 
     # ========== Internal helpers ==========
@@ -294,7 +299,7 @@ class Lattix(
         parent_node._children[key] = new_node
         return new_node
     
-    def _walk_path(self, path: str, stop_before_last: bool = False) -> TupleType[Lattix[_KT, _VT], _KT] | Any:
+    def _walk_path(self, path: str = "", stop_before_last: bool = False, force_no_create: bool = False) -> TupleType[Lattix[_KT, _VT], _KT] | Any:
         """
         Internal helper for traversing a hierarchical path.
 
@@ -318,26 +323,23 @@ class Lattix(
         node, sep = self, self._sep
         cls = type(node)
 
-        create_missing = node.lazy_create
+        create_missing = False if force_no_create else node.lazy_create
 
         if (sep not in path) and (not create_missing):
             if stop_before_last:
                 return node, path
             keys = [path]
-            parents_lst, last_key = [], path
+            ancestors, last_key = [], path
         else:
             keys = path.split(sep)
-            parents_lst, last_key = keys[:-1], keys[-1]
+            ancestors, last_key = keys[:-1], keys[-1]
 
             # 1. Traverse up to the parent of the target
-            for key in parents_lst:
+            for key in ancestors:
                 if key not in node._children:
                     if create_missing:
                         val = node._promote_child(key, None, node)
-                        if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(f"[DD:PATH] created '{key}' during traversal of {path}")
                     else:
-                        logger.warning(f"[DD:PATH] not found: '{key}' in {path}")
                         raise PathNotFoundError(key, path)
                 else:
                     val = node._children[key]
@@ -347,7 +349,7 @@ class Lattix(
                 elif isinstance(val, Mapping):
                     node = node._promote_child(key, val, node)
                 else:
-                    raise UnexpectedNodeTypeError(key, val)
+                    raise UnexpectedNodeError(key, val)
 
             # 2. Return based on mode
             if stop_before_last:
@@ -357,7 +359,6 @@ class Lattix(
         if last_key not in node._children:
             if create_missing:
                 return node._promote_child(last_key, None, node)
-            logger.warning(f"[DD:PATH] not found: '{last_key}' in {path}")
             raise PathNotFoundError(last_key, path)
         
         val = node._children[last_key]
@@ -368,44 +369,35 @@ class Lattix(
 
         return val
 
-        """``Deprecated Method``
-        node, val = self, None
-        sep = node._sep
-        keys = path.split(sep)
-        cls = type(node)
+        """Version 2:
+        ancestors = keys[:-1] if stop_before_last else keys
+        last_key = keys[-1]
 
-        
-        # Node config: (parent, sep, lazy_create, thread_safety)
-        node_cfg = (node, sep, node.lazy_create, node.ts_level)
-        create_missing |= node_cfg[2]
-
-        # traversal
-        for key in (keys[:-1] if stop_before_last else keys):
-            cfg = (key, ) + node_cfg  # cfg: (key, parent, sep, lazy, ts)
-            
+        for i, key in enumerate(ancestors):
+            if stop_before_last and i == len(ancestors): # Safety check
+                break
+                
             if key not in node._children:
                 if create_missing:
-                    node._children[key] = node._construct(None, cfg)
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(f"[DD:PATH] created '{key}' during traversal of {path}")
+                    node._promote_child(key, None, node)
                 else:
-                     logger.warning(f"[DD:PATH] not found: '{key}' in {path}")
-                     raise PathNotFoundError(key, path)
-               
+                    raise PathNotFoundError(key, path)
+            
             val = node._children[key]
-            if isinstance(val, cls):
+            
+            # Auto-promote dicts encountered during traversal
+            if isinstance(val, Mapping) and not isinstance(val, cls):
+                val = node._promote_child(key, val, node)
+            
+            if stop_before_last or i < len(ancestors) - 1:
+                if not isinstance(val, cls):
+                    raise UnexpectedNodeError(key, val)
                 node = val
-            elif isinstance(val, Mapping):
-                detached_cfg = (key, None) + node_cfg[1:]
-                val = node._construct(val, detached_cfg)
-                # Manually attach correct parent
-                val.parent = node
-                node._children[key] = val
-                node = val
-            elif stop_before_last:
-                raise UnexpectedNodeTypeError(key, val)
+            else:
+                # This is the final key and stop_before_last is False
+                return val
 
-        return (node, keys[-1]) if stop_before_last else val
+        return node, last_key
         """
     
     @staticmethod
@@ -427,45 +419,35 @@ class Lattix(
 
     # ========== MutableMapping core (Mapping protocol / Basic dict-like) ==========
     def __getitem__(self, key: _KT):
+        children = self._children
         try:
-            if isinstance(key, str):
+            val = children[key]
+        except KeyError:
+            if isinstance(key, str) and (self._sep in key):
                 return self._walk_path(key, stop_before_last=False)
-            return self._children[key]
-        except UnexpectedNodeTypeError:
-            raise
-        except (PathNotFoundError, KeyError):
-            raise KeyNotFoundError(str(key))
-        
-        """```Deprecated Method```
-        node, last = self._walk_path(key, stop_before_last=True)
-        if last not in node._children:
-            logger.warning(f"[DD:GET] Missing key '{key}'")
             raise KeyNotFoundError(key)
         
-        val = node._children.get(last)
-        if isinstance(val, Lattix):
-            return val
-        elif isinstance(val, Mapping):
-            cfg = (last, None) + node._config()
-            val = node._construct(val, cfg)
-            val.parent = node
-            node._children[last] = val
-            return val
+        if isinstance(val, Mapping) and not isinstance(val, type(self)):
+            val = self._promote_child(key, val, self)
+            children[key] = val
         return val
-        """
 
     def __setitem__(self, key: _KT, value: _VT):
         cls = type(self)
+        
+        if getattr(self, "_frozen", False):
+            raise ModificationDeniedError(cls)
 
-        if isinstance(key, str) and self._sep in key:
+        if (type(key) is str) and (self._sep in key):
             node, last = self._walk_path(key, stop_before_last=True)
         else:
             node, last = self, key
-        
+
+        node_children = node._children
         if last in node:
-            old_child = node._children[last]
-            if isinstance(old_child, cls):
-                old_child.detach()
+            old = node_children[last]
+            if isinstance(old, cls):
+                old.detach()
 
         if is_scalar(value):
             pass
@@ -473,58 +455,22 @@ class Lattix(
             parent = value.parent
             if parent is None:
                 value.transplant(node, last)
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"[DD:SET] {key} = {type(copied_val).__name__}")
                 return
             
             if parent is not node:
-                copied_val = value.copy()
-                copied_val.transplant(node, last)
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"[DD:SET] {key} = {type(copied_val).__name__}")
+                final_val = value.copy()
+                final_val.transplant(node, last)
                 return
         elif isinstance(value, Mapping):
-            _ = node._children.pop(last, None)
+            node_children.pop(last, None)
             value = node._construct(value, (last, node) + node._config())
         elif isinstance(value, Iterable):
             value = self._convert_iterable(node, last, value)
         
-        node._children[last] = value
-
-        if not isinstance(value, Mapping): 
-            node._children[last] = value
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"[DD:SET] {key} = {type(value).__name__}")
-
-        """```Deprecated Method```
-        if isinstance(key, str) and self._sep in key:
-            node, last = self._walk_path(key, stop_before_last=True, create_missing=True)
-            node[last] = value
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"[DD:SET] Path {key} = {type(value).__name__}")
-            return
-        else:
-            node, last = self, key
-
-        children = self._children
-        if isinstance(value, Lattix):
-            if value.parent is None or value.parent is not self:
-                value.parent = self
-            children[key] = value
-        elif isinstance(value, Mapping):
-            cfg = (key, self) + self._config()
-            children[key] = self._construct(value, cfg)
-        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
-            children[key] = self._convert_iterable(self, key, value)
-        else:
-            children[key] = value
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"[DD:SET] {key} = {type(value).__name__}")
-        """
+        node_children[last] = value
 
     def __delitem__(self, key):
-        if isinstance(key, str) and self._sep in key:
+        if (type(key) is str) and self._sep in key:
             try:
                 node, last = self._walk_path(key, stop_before_last=True)
             except PathNotFoundError:
@@ -537,18 +483,6 @@ class Lattix(
         
         del node._children[last]
 
-        """```Deprecated Method```
-        if isinstance(key, str) and self._sep in key:
-            node, last = self._walk_path(key, stop_before_last=True)
-            if last not in node._children:
-                raise KeyNotFoundError(key)
-            del node._children[last]
-        elif key not in self._children:
-            raise KeyNotFoundError(key)
-        else:
-            del self._children[key]
-        """
-
     def __iter__(self):
         """Return iterator over top-level keys."""
         return iter(self._children)
@@ -558,21 +492,15 @@ class Lattix(
         return len(self._children)
 
     def __contains__(self, key):
-        if (not isinstance(key, str)) or (self._sep not in key):
+        if (type(key) is not str) or (self._sep not in key):
             return key in self._children
 
         try:
-            lazy_create = self._lazy_create
-            object.__setattr__(self, "_lazy_create", False)
-            node, key = self._walk_path(key, stop_before_last=True)
-        except KeyPathError:
+            node, key = self._walk_path(key, stop_before_last=True, force_no_create=True)
+        except (KeyPathError, NodeError):
             return False
         else:
             return key in node._children
-        finally:
-            if lazy_create:
-                object.__setattr__(self, "_lazy_create", lazy_create)
-                # self._lazy_create = lazy_create
   
     def __reversed__(self):
         return reversed(list(self._children))
@@ -599,21 +527,11 @@ class Lattix(
     def get(self, key: _KT, default: Lattix[_KT, _VT] | Any | None = None):
         """Return value for key if exists, else default."""
         try:
-            lazy_create = self._lazy_create
-            if isinstance(key, str):
-                object.__setattr__(self, "_lazy_create", False)
-                return self._walk_path(key, stop_before_last=False)
+            if type(key) is str:
+                return self._walk_path(key, stop_before_last=False, force_no_create=True)
             return self._children[key]
         except (KeyPathError, KeyError):
             return default
-        finally:
-            if lazy_create:
-                object.__setattr__(self, "_lazy_create", lazy_create)
-        
-        """```Deprecated Method```
-        node, key = self._walk_path(key, stop_before_last=True)
-        return object.__getattribute__(node, "_children").get(key, default)  # type: ignore
-        """
 
     def setdefault(self, key, default=None):
         """Set default value if key not exists, wrapping dict as Lattix."""
@@ -646,23 +564,14 @@ class Lattix(
         elif isinstance(other, Iterable) and not is_scalar(other):
             for obj in other:
                 if isinstance(obj, Mapping):
-                    map_obj = cast(Mapping[_KT, _VT], other)
-                    for key, val in list(map_obj.items()):
+                    for key, val in list(obj.items()):
                         self[key] = val
                 elif len(obj) == 2:
                     self[obj[0]] = obj[1]
                 else:
-                    raise NonPairIterableError("update", type(other).__name__)
-
-            """```Deprecated Method```
-            try:
-                for key, v in other:
-                    self[key] = v
-            except ValueError:
-                raise NonPairIterableError("update", type(other).__name__)
-            """
+                    raise ArgTypeError(arg="other", value=obj, ideal_type="iterable of (key, value) pairs", func="update")
         else:
-            raise ArgTypeError("update", "other", "a mapping or iterable of pairs", type(other).__name__)
+            raise ArgTypeError(arg="other", value=other, ideal_type="a mapping or iterable of pairs", func="update")
         
         for key, v in list(kwargs.items()):
             self[key] = v  # pyright: ignore
@@ -676,19 +585,22 @@ class Lattix(
         # --- reserved internals ---
         internal = object.__getattribute__(self, "__INTERNAL_ATTRS__")
         if name in internal:
-            # if name in children:
-            #    raise ReservedNameConflictError(name)
-            raise InternalAttributeError(name)
+            raise AttributeAccessDeniedError(name)
 
         # --- class attributes ---
-        cls_attrs = self._get_class_attrs()
-        if name in cls_attrs:
+        try:
             return object.__getattribute__(self, name)
+        except:
+            pass
 
         # --- stored children ---
         children = object.__getattribute__(self, "_children")
         if name in children:
-            return children[name]
+            val = children[name]
+            if isinstance(val, Mapping) and not isinstance(val, type(self)):
+                val = self._promote_child(name, val, self)
+                children[name] = val
+            return val
         
         # --- lazy-create ---
         if object.__getattribute__(self, "_lazy_create"):
@@ -696,14 +608,21 @@ class Lattix(
             children[name] = self._construct(None, cfg)
             return children[name]
 
-        raise MissingAttributeError(name)
+        raise AttributeNotFoundError(name)
 
     def __setattr__(self, name: str, value: _VT):
         """Set attributes as if they were dictionary keys."""
+        if getattr(self, "_frozen", False):
+            raise ModificationDeniedError(type(self))
+
         # --- reserved internals ---
         internal = object.__getattribute__(self, "__INTERNAL_ATTRS__")
         if name in internal:
-            raise ReservedNameConflictError(name)
+            raise AttributeAccessDeniedError(name, cause=(
+                f"\n'{name}' is a reserved internal name; "
+                f"use d[{name!r}] instead of d.{name}"
+            ))
+            # raise ReservedNameConflictError(name)
         
         # --- class attributes ---
         cls_attrs = self._get_class_attrs()
@@ -719,11 +638,10 @@ class Lattix(
 
         # --- stored children ---
         if (name in children) or lazy_create:
-            children[name] = value
-            # self[name] = value # Route through __setitem__ for logic consistency
+            self[name] = value # Route through __setitem__ for logic consistency
             return
 
-        raise MissingAttributeError(name)
+        raise AttributeNotFoundError(name)
 
     def __delattr__(self, name: str):
         # --- name validation ---
@@ -737,13 +655,21 @@ class Lattix(
             return
         
         # --- class attributes ---
-        else:
+        try:
             object.__delattr__(self, name)
-            # --- reserved internals ---
             self.__INTERNAL_ATTRS__.discard(name)
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(f"[DD:DELATTR] Attr destroyed: '{name}'")
-            return
+            if self.__CLASS_ATTRS__ is not None:
+                self.__CLASS_ATTRS__.discard(name)
+        except AttributeError:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}' "
+                "(Class-level attributes cannot be deleted from instances)"
+            ) from None
+
+        if logger.isEnabledFor(logging.WARNING):
+            logger.warning(f"[DD:DELATTR] Attr destroyed: '{name}'")
+
+        return
        
     def __dir__(self):
         base_attrs = super().__dir__()
@@ -775,15 +701,22 @@ class Lattix(
         else:
             raise ValueError(f"Unsupported format specifier: '{format_spec}'")
 
-    def __pretty__(self, printer: Any, cycle: Any):
+    def _repr_pretty_(self, printer: Any, cycle: Any):
         """Pretty-printer integration (used by IPython, rich, etc.)."""
+        name = type(self).__name__
+
         if cycle:
-            printer.text(f"{type(self).__name__}({{...}})")
+            printer.text(f"<Circular {name} at {hex(id(self))}>")
             return
 
         # Use FormatterMixin pprint
-        formatted = self.pprint(colored=False, compact=False, style="default")
-        printer.text(formatted)
+        try:
+            formatted = self.pprint(colored=False, compact=False, style="default")
+            printer.text(formatted)
+        except Exception as e:
+            printer.text(f"<{name} formatting error: {e}>")
+    
+    __pretty__ = _repr_pretty_
 
     # ========== Merge / Logical operators ==========
     # Basicly follow PEP 584; right value assignment
@@ -802,7 +735,7 @@ class Lattix(
 
     def merge(self, other: Mapping[_KT, _VT], overwrite: bool = True):
         if not isinstance(other, Mapping):
-          raise ArgTypeError("merge", "other", "dict-like", type(other).__name__)
+          raise ArgTypeError(arg="other", value=other, ideal_type="dict-like", func="merge")
         
         cls = type(self)
         children = self._children
@@ -817,7 +750,7 @@ class Lattix(
                     self[key] = v
         return self
 
-    # --- and (&) / intersection ---
+    # --- general function ---
     def _set_operation(self, other: Mapping[_KT, _VT] | Any, op: str, inplace: bool = False):
         """
         Unified implementation for Set Operations.
@@ -827,12 +760,10 @@ class Lattix(
         L = Lattix
 
         # 1. Validation
-        if not isinstance(other, Mapping):
-            return self if inplace else self._construct(None, ('', None) + self._config())
         other = cast(Mapping[_KT, _VT], other)
 
         if op not in ("&", "|", "-", "^"):
-            raise OperandTypeError(self, other, op)
+            raise UnsupportedOperatorError(op)
 
         # 2. Setup Result (Clone or Inplace)
         result = self if inplace else self.clone(True, True, False)
@@ -849,14 +780,10 @@ class Lattix(
             keys_to_iter = list(self_children.keys()) + [k for k in other_children if k not in self_children]
 
         # 4. Define Logic Flags based on Op
-        # (Should we keep keys only in Self? Only in Other? How to handle overlap?)
         keep_self_only  = op in ("|", "-", "^")  # OR, SUB, XOR keep unique self keys
         keep_other_only = op in ("|", "^")       # OR, XOR add unique other keys
-        
-        # Action on intersection: 'merge_or_overwrite' or 'merge_or_delete'
-        # AND/OR -> Merge nested, otherwise overwrite with other.
-        # SUB/XOR -> Merge nested, otherwise delete.
-        is_pruning_op = op in ("-", "^") 
+        is_pruning_op   = op in ("-", "^")       # SUB, XOR -> Merge nested, otherwise delete
+                                                 # AND, OR -> Merge nested, otherwise overwrite with other.
 
         delete_keys = []
 
@@ -898,8 +825,8 @@ class Lattix(
                     delete_keys.append(key)
 
             # --- CASE 3: Only in Other ---
-            elif in_other:
-                if keep_other_only:
+            else:
+                # if keep_other_only:
                     if isinstance(v2, L):
                         self_children[key] = v2.clone(True, True, False)
                     else:
@@ -911,6 +838,7 @@ class Lattix(
 
         return result
     
+    # --- and (&) / intersection ---
     def _and_impl(self, other: Any, inplace: bool = False):
         return self._set_operation(other, op="&", inplace=inplace)
 
@@ -1016,20 +944,20 @@ class Lattix(
         return cls(result)
 
     # ========== Leaf / Traversal utilities ==========
-    def get_path(self, path: str, default: Any = None):
+    def get_path(self, path: str = "", default: Any = None):
         try:
             return self._walk_path(path, stop_before_last=False)
         except KeyError:
             return default
 
-    def has_path(self, path: str) -> bool:
+    def has_path(self, path: str = "") -> bool:
         try:
             self._walk_path(path, stop_before_last=False)
             return True
         except KeyError:
             return False
 
-    def is_leaf(self, path: str):
+    def is_leaf(self, path: str = ""):
         try:
             val = self._walk_path(path, stop_before_last=False)
             return not isinstance(val, Lattix)
@@ -1038,40 +966,52 @@ class Lattix(
 
     # ========== Serialization & Export ==========
     def to_dict(self) -> DictType[_KT, _VT]:
-        # return {key: self.__deep_convert__(v) for key, v in self._children.items()}
         return {key: deep_convert(v) for key, v in self._children.items()}
     
     def to_list(self) -> ListType[TupleType[_KT, _VT]]:
-        # return [[key, self.__deep_convert__(v, list)] for key, v in self._children.items()]
         return [[key, deep_convert(v, list)] for key, v in self._children.items()]
     
     def to_tuple(self):
-        # return tuple([(key, self.__deep_convert__(v, tuple)) for key, v in self._children.items()])
         return tuple([(key, deep_convert(v, tuple)) for key, v in self._children.items()])
 
-    def to_json(self, **kwargs: Any):
-        import json
-        # serializable = self._to_serializable(self)
+    def json(self, **kwargs: Any):
+        if not compat.HAS_JSON:
+            raise OptionalImportError("JSON", "JSON serialization")
         serializable = serialize(self)
         return json.dumps(serializable, **kwargs)
+    
+    def orjson(self, **kwargs: Any):
+        if not compat.HAS_ORJSON:
+            raise OptionalImportError("orjson", "JSON serialization", "orjson")
 
-    def to_yaml(self, enhanced: bool = False, **kwargs: Any):
-        from ..serialization import yaml_safe_dump
-        from ..utils.compat import HAS_YAML, yaml
+        return compat.orjson.dumps(
+            self, 
+            default=lambda obj: serialize(obj), 
+            option=compat.orjson.OPT_SERIALIZE_NUMPY | compat.orjson.OPT_NON_STR_KEYS,
+            **kwargs
+        )
 
-        if not HAS_YAML:
-            raise NoPyYAMLError
-        # serializable = self._to_serializable(self)
+    def msgpack(self):
+        if not compat.HAS_MSGPACK:
+            raise OptionalImportError("MessagePack", "packing suport", "msgpack")
+        
+        return compat.msgpack.packb(serialize(self), use_bin_type=True)
+
+    def yaml(self, enhanced: bool = False, **kwargs: Any):
+        if not compat.HAS_YAML:
+            raise OptionalImportError(package="PyYAML", extra="pyyaml")
+
         serializable = serialize(self)
 
         if enhanced:
+            from ..serialization import yaml_safe_dump
             return yaml_safe_dump(serializable, **kwargs)
 
         sort_keys = kwargs.pop("sort_keys", False)
         indent = kwargs.pop("indent", 2)
         default_flow_style = kwargs.pop("default_flow_style", False)
 
-        return cast(str, yaml.safe_dump(
+        return cast(str, compat.yaml.safe_dump(
             serializable, 
             sort_keys=sort_keys, 
             indent=indent,
@@ -1079,82 +1019,11 @@ class Lattix(
             **kwargs
         )).rstrip() + "\n"
 
-    # def __deep_convert__(self, value, ftype=dict, **kwargs):
-    #     """Recursively convert Lattix and its children to a target type."""
-    #     def _construct_from_items(items):
-    #         """Inline helper for constructing containers safely."""
-    #         if issubclass(ftype, Mapping):
-    #             return construct_from_iterable(ftype, dict(items))
-    #         elif issubclass(ftype, Iterable) and ftype not in (str, bytes):
-    #             normalized = ([key, v] if ftype is list else tuple([key, v]) for key, v in items)
-    #             built = construct_from_iterable(ftype, normalized)
-    #             if (len(built) == 1) and \
-    #                 isinstance(built[0], (ftype, list ,tuple)) and \
-    #                 (len(built[0]) == 2):
-    #                 return ftype(built[0])
-    #             return built
-    #         else:
-    #             # return construct_from_iterable(ftype, (tuple(kv) for kv in items))
-    #             return construct_from_iterable(list, items)
-
-    #     if (adapter := get_adapter(value)):    # PEP 572
-    #         return adapter(value, lambda v: self.__deep_convert__(v, ftype, **kwargs))
-    #     elif isinstance(value, (str, bytes, bytearray)):
-    #         return value
-    #     # --- Mapping ---
-    #     elif isinstance(value, Mapping):
-    #         items = ((key, self.__deep_convert__(sub, ftype, **kwargs)) for key, sub in value.items())
-    #         return _construct_from_items(items)
-    #     # --- Iterable ---
-    #     elif isinstance(value, Iterable):
-    #         return construct_from_iterable(type(value), (self.__deep_convert__(v, ftype, **kwargs) for v in value))
-    #     else:
-    #         return value
-    
-    # def deep_convert(self, ftype=dict, **kwargs):
-    #     """Public API: return a flattened copy of this Lattix"""
-    #     return self.__deep_convert__(self, ftype=ftype, **kwargs)
-
-    # def _to_serializable(self, obj, _seen=None):
-    #     if _seen is None:
-    #         _seen = set()
-    #     oid = id(obj)
-    #     if oid in _seen:
-    #         return "<circular_ref>"
-    #     _seen.add(oid)
-       
-    #     if isinstance(obj, Lattix):
-    #         return {key: self._to_serializable(v, _seen) for key, v in obj._children.items()}
-    #     elif isinstance(obj, Mapping):
-    #         return {key: self._to_serializable(v, _seen) for key, v in obj.items()}
-    #     elif isinstance(obj, (list, tuple)):
-    #         return type(obj)(self._to_serializable(v, _seen) for v in obj)
-    #     elif isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
-    #         return [self._to_serializable(v, _seen) for v in obj]
-    #     else:
-    #         return obj
-
     # ========== Copy & Sort utilities ==========
     def __deepcopy__(self, memo: DictType[int, Any]):
-        _id = id(self)
-        if _id in memo:
-            return memo[_id]
         return self.clone(deep=True, keep_state=True, memo=memo)
-        
-        """```Deprecated Method```
-        pre-register to prevent re-entry
-        memo[id(self)] = self
-        new_copy = self.clone(deep = True, keep_state=True, memo=memo)
-        memo[id(self)] = new_copy
-        """
 
-    def clone(
-        self, 
-        deep: bool = True, 
-        keep_state: bool = True, 
-        share_lock: bool = False, 
-        memo: DictType[int, Any] | None = None
-    ):
+    def clone(self, deep: bool = True, keep_state: bool = True, share_lock: bool = False, memo: DictType[int, Any] | None = None):
         cls = type(self)
         if memo is None:
             memo = {}
@@ -1166,38 +1035,25 @@ class Lattix(
         if keep_state:
             sep = getattr(self, "_sep", "/")
             lazy = getattr(self, "_lazy_create", False)
-            ts_level = getattr(self, "_ts_level", 0)
+            enable_lock = getattr(self, "_locking_enabled", False)
 
             if share_lock:
                 lock = getattr(self, "_lock", None)
-                rlock = getattr(self, "_rlock", None)
                 is_detached = False
             else:
-                lock = Lock() if ts_level == 1 else None
-                rlock = RLock() if ts_level == 2 else None
+                lock = RLock() if enable_lock else None
                 is_detached = True
         else:
-            sep, lazy, ts_level = "/", False, 0
-            lock, rlock = None, None
+            sep, lazy = "/", False
+            enable_lock = False
+            lock = None
             is_detached = True
 
         def _copy_value(val: Any, parent_for_val: Any) -> Any:
-            if isinstance(val, cls):
+            if isinstance(val, Lattix):
                 return _reconstruct(val, parent_for_val)
-            if is_scalar(val):
+            if is_primitive(val):
                 return val
-            if isinstance(val, Mapping):
-                map_val = cast(MutableMapping[_KT, _VT], val)
-                new_map: MutableMapping[_KT, _VT]
-                try:
-                    new_map = type(map_val)()
-                except Exception:
-                    new_map = {}
-                for k, v in map_val.items():
-                    new_map[k] = _copy_value(v, parent_for_val)
-                return new_map
-            if isinstance(val, Iterable):
-                return construct_from_iterable(type(val), [_copy_value(x, parent_for_val) for x in val])
             return deepcopy(val, memo)
 
         # Main recursive constructor
@@ -1206,19 +1062,16 @@ class Lattix(
             if node_id in memo:
                 return memo[node_id]
 
-            new_key: str | None = getattr(curr_node, "_key", None)
+            new_key: str | None = getattr(curr_node, "_key", "")
             new_node = cls(None, key=new_key, parent=new_parent, sep=sep,
-                           lazy_create=lazy, ts_level=ts_level)
+                           lazy_create=lazy, enable_lock=enable_lock)
             memo[node_id] = new_node
 
             object.__setattr__(new_node, "_lock", lock)
-            object.__setattr__(new_node, "_rlock", rlock)
             object.__setattr__(new_node, "_detached", is_detached)
 
-            old_children = getattr(curr_node, "_children", {})
-            new_children = {}
-            for k, v in old_children.items():
-                new_children[k] = _copy_value(v, new_node)
+            oldren = getattr(curr_node, "_children", {})
+            new_children = {k: _copy_value(v, new_node) for k, v in oldren.items()}
 
             object.__setattr__(new_node, "_children", new_children)
             return new_node
@@ -1226,104 +1079,16 @@ class Lattix(
         if not deep:
             key = getattr(self, "_key", None)
             new_root = cls(None, key=key, parent=None, sep=sep, 
-                           lazy_create=lazy, ts_level=ts_level)
+                           lazy_create=lazy, enable_lock=enable_lock)
             memo[self_id] = new_root
 
             object.__setattr__(new_root, "_lock", lock)
-            object.__setattr__(new_root, "_rlock", rlock)
             object.__setattr__(new_root, "_detached", is_detached)
 
             object.__setattr__(new_root, "_children", getattr(self, "_children", {}).copy())
             return new_root
         else:
             return _reconstruct(self, None)
-        
-        """```Deprecated Method```
-        cls = type(self)
-
-        try:
-            cfg = self._config()
-        except:
-            cfg = ("/", False, 0)
-        self_cfg = (self.key, None) + cfg
-        new = self._construct(None, self_cfg)
-
-        # --- backup locks ---
-        self_lock = getattr(self, "_lock", None)
-        self_rlock = getattr(self, "_rlock", None)
-        ts_level = self_cfg[4]
-
-        # ---- preserve or default state ----
-        if not keep_state:
-            ts_level = 0
-            object.__setattr__(new, "_sep", "/")
-            object.__setattr__(new, "_lazy_create", False)
-            object.__setattr__(new, "_ts_level", ts_level)
-
-        # --- recursively strip locks / parent pointers to avoid deepcopy hand ---
-        _registry = {}  # object id -> (obj_ref, old_lock, old_rlock, old_parent)
-        def _strip(obj, seen: set):
-            oid = id(obj)
-            if oid in seen:
-                return
-            seen.add(oid)
-
-            if isinstance(obj, cls):
-                _registry[oid] = (obj, getattr(obj, "_lock", None), 
-                                  getattr(obj, "_rlock", None), 
-                                  getattr(obj, "_parent", None))
-                object.__setattr__(obj, "_parent", None)
-                object.__setattr__(obj, "_lock", None)
-                object.__setattr__(obj, "_rlock", None)
-                for child in object.__getattribute__(obj, "_children").values():
-                    _strip(child, seen)
-            elif isinstance(obj, (str, bytes, bytearray)):
-                return
-            elif isinstance(obj, Mapping):
-                for v in obj.values():
-                    _strip(v, seen)
-            elif isinstance(obj, Iterable):
-                for v in obj:
-                    _strip(v, seen)
-        _strip(self, seen=set())
-        
-        children = object.__getattribute__(self, "_children")
-        data = deepcopy(children, {}) if deep else children.copy()
-
-        # ---- restore locks & parents on the original tree using registry ----
-        for oid, (obj, old_lock, old_rlock, old_parent) in _registry.items():
-            try:
-                object.__setattr__(obj, "_lock", old_lock)
-                object.__setattr__(obj, "_rlock", old_rlock)
-                object.__setattr__(obj, "_parent", old_parent)
-            except Exception:
-                # best-effort restore: ignore if some object mutated meanwhile
-                pass
-
-        # ---- assign cloned children and basic node attrs ----
-        def _rebuild_parents(node):
-            children_map = getattr(node, "_children", {})
-            if not isinstance(children_map, Mapping):
-                return
-            for key, v in children_map.items():
-                if isinstance(v, cls):
-                    # set child's key and parent weakref to node
-                    object.__setattr__(v, "_key", key)
-                    v.parent = node
-                    _rebuild_parents(v)
-
-        object.__setattr__(new, "_children", data)
-        _rebuild_parents(new)
-        
-        if share_lock:
-            new._propagate_lock(new, ts_level, self_lock, self_rlock, set())
-        else:
-            lock = Lock() if ts_level == 1 else None
-            rlock = RLock() if ts_level == 2 else None
-            new._propagate_lock(new, ts_level, lock, rlock, set())
-        
-        return new
-        """
 
     def sort_by_key(self, reverse: bool = False, recursive: bool = False):
         sorted_items = sorted(self._children.items(), key=lambda x: x[0], reverse=reverse)
@@ -1343,9 +1108,14 @@ class Lattix(
     def sort_by_value(self, reverse: bool = False, recursive: bool = False):
         def safe_key(item):
             v = item[1]
-            if isinstance(v, (int, float, str, bool, type(None))):
-                return v
-            return repr(v)
+            if isinstance(v, (int, float)):
+                return (0, v)
+            if isinstance(v, str):
+                return (1, v)
+            return (2, repr(v))
+            # if isinstance(v, (int, float, str, bool, type(None))):
+            #     return v
+            # return repr(v)
 
         sorted_items = sorted(self._children.items(), key=safe_key, reverse=reverse)
         object.__setattr__(self, "_children", dict(sorted_items))
@@ -1394,9 +1164,8 @@ class Lattix(
     @staticmethod
     def _propagate_lock(
         obj: Any, 
-        level: int, 
-        lock: LockType | None, 
-        rlock: RLockType | None, 
+        enable_lock: bool, 
+        lock: RLockType | None, 
         seen: SetType[int] | None = None
     ):
         if seen is None:
@@ -1407,45 +1176,42 @@ class Lattix(
         seen.add(oid)
 
         if isinstance(obj, ThreadingMixin):
-            object.__setattr__(obj, "_ts_level", level)
+            object.__setattr__(obj, "_locking_enabled", enable_lock)
             object.__setattr__(obj, "_lock", lock)
-            object.__setattr__(obj, "_rlock", rlock)
-            # object.__setattr__(obj, "_detached", (lock is None and rlock is None))
+            object.__setattr__(obj, "_detached", lock is None)
 
-        if hasattr(obj, "_children") and isinstance(obj._children, dict):  # pyright: ignore
-        # if isinstance(obj, LattixNode):
-            for child in obj._children.values():
-                Lattix._propagate_lock(child, level, lock, rlock, seen)
+        if (children := getattr(obj, "_children", {})):
+            for child in children.values():
+                Lattix._propagate_lock(child, enable_lock, lock, seen)
         elif is_scalar(obj):
             return
         elif isinstance(obj, Mapping):
             for v in obj.values():
-                Lattix._propagate_lock(v, level, lock, rlock, seen)
+                Lattix._propagate_lock(v, enable_lock, lock, seen)
         elif isinstance(obj, Iterable):
             for v in obj:
-                Lattix._propagate_lock(v, level, lock, rlock, seen)
+                Lattix._propagate_lock(v, enable_lock, lock, seen)
+
+    def freeze(self):
+        self._propagate_attrs(self, {"_frozen": True})
+    
+    def unfreeze(self):
+        self._propagate_attrs(self, {"_frozen": False})
 
     def detach(self, clear_locks: bool = False):
         self.detach_thread(clear_locks)
         LattixNode.detach(self)
-        self._propagate_lock(self, self._ts_level, 
-                             self._lock, self._rlock)
+        self._propagate_lock(self, self._locking_enabled, self._lock)
     
     def attach(self, parent: Any):
-        # 包裝一個tey，統一catch比較好？
         self.attach_thread(parent)
         LattixNode.attach(self, parent)
-        self._propagate_lock(self, self._ts_level, 
-                             self._lock, self._rlock)
+        self._propagate_lock(self, self._locking_enabled, self._lock)
     
     def transplant(self, parent: Any, key: _KT | None = None):
-        # 包裝一個tey，統一catch比較好？
-        # 如果parent是None怎麼辦？throw error?
         self.transplant_thread(parent)
         LattixNode.transplant(self, parent, key)
-        self._propagate_lock(self, self._ts_level, 
-                             self._lock, self._rlock)
-
+        self._propagate_lock(self, self._locking_enabled, self._lock)
 
     def __del__(self):
         try:
@@ -1458,25 +1224,13 @@ class Lattix(
             pass
 
 
-def dict_union(a: MutableMapping[_KT, _VT], b: MutableMapping[_KT, _VT]) -> Any:  # pragma: no cover
-    if isinstance(a, dict) and isinstance(b, Lattix):
-        return type(b).__class__(a) | b
-    elif isinstance(a, Lattix) and isinstance(b, dict):
-        return a | type(a).__class__(b)
-    else:
-        return a | b   # pyright: ignore
-
-
 if __name__ == "__main__":
     import doctest
     doctest.testmod()
     
-    # print(Lattix.__annotations__)
-    # print(Lattix().__getstate__())
-    # print(dir(Lattix()))
     import numpy as np
     import pandas as pd
-    from collections import deque, defaultdict
+    from collections import deque
     d = Lattix(
         a = 1,
         b = {"x": 10, "y": {"z": 20}},
@@ -1489,69 +1243,33 @@ if __name__ == "__main__":
         i = pd.DataFrame({"first": [1, 2, 3], "second": (5, 6, 7)}),
         k = deque([9, 8, 7, 6, 5]),
     )
-    # result = d.deep_convert(list)
-    # print(result)
 
-    # print(d)
     print(d.pprint(compact=True))
     print(d.pprint(compact=False))
-    # print(d.__class__)
-    # print(type(d).__name__)
 
-    L = Lattix
-    # print("=== Lattix MRO ===")
-    # for c in L.__mro__:
-    #     slots = getattr(c, "__slots__", None)
-    #     has_dict = False
-    #     # 判斷該類別的 instances 是否會有 __dict__
-    #     if "__dict__" in (slots if isinstance(slots, (list, tuple)) else (slots or ())):
-    #         has_dict = True
-    #     # 也可檢查類別 dict 本身是否保有 __dict__ 屬性
-    #     print(f"{c!r:60} | __slots__ = {slots!r:30} | has '__dict__' in slots? {has_dict}")
+    import inspect
+    cls = Lattix
 
-    # print("\n=== Check if any base is builtin heap type (like dict) ===")
-    # for c in cls.__mro__:
-    #     print(c, "is builtin type subclass of dict?", issubclass(c, dict) if inspect.isclass(c) else "n/a")
+    print("=== Lattix MRO ===")
+    for c in cls.__mro__:
+        slots = getattr(c, "__slots__", None)
+        has_dict = False
+        # Determine if instances of this category have __dict__
+        if "__dict__" in (slots if isinstance(slots, (list, tuple)) else (slots or ())):
+            has_dict = True
+        # Check if the category `dict` itself has the `__dict__` attribute.
+        print(f"{c!r:60} | __slots__ = {slots!r:30} | has '__dict__' in slots? {has_dict}")
 
-    # print("\n=== Show attrs related to __dict__ presence ===")
-    # for c in cls.__mro__:
-    #     print(c.__name__, "->", "has __dict__ attribute?", "__dict__" in c.__dict__)
-    # from pprint import pprint
-    # for c in cls.__mro__:
-    #     pprint(f"{c.__name__}, {c.__dict__}")
+    print("\n=== Check if any base is builtin heap type (like dict) ===")
+    for c in cls.__mro__:
+        print(c, "is builtin type subclass of dict?", issubclass(c, dict) if inspect.isclass(c) else "n/a")
+
+    print("\n=== Show attrs related to __dict__ presence ===")
+    for c in cls.__mro__:
+        print(c.__name__, "->", "has __dict__ attribute?", "__dict__" in c.__dict__)
     
-    # print(dir(cls))
-    # print(cls().__dict__)
-    # print(cls.__slots__)
-
-    # d = Lattix({"a": {"b": {"c": 123}}})
-    # d = Lattix(ts_level=1)
-    # print("----------")
-    # d["a/b/c"] = 123
-    # print("----------")
-    # print(d.pprint(colored=True, compact=False))
-    # print("----------")
-    # print([n.parent for n in d.traverse("preorder")])
-    # print("----------")
-    # print("a", d.is_leaf("a"))
-    # print("a/", d.is_leaf("a/"))
-    # print("a/b", d.is_leaf("a/b"))
-    # print("a/b/", d.is_leaf("a/b/"))
-    # print("a/b/c", d.is_leaf("a/b/c"))
-    # print("a/b/c/", d.is_leaf("a/b/c/"))
-    # print("a/b/c/d", d.is_leaf("a/b/c/d"))
-    # print()
-    # print("a", d.has_path("a"))
-    # print("a/", d.has_path("a/"))
-    # print("a/b", d.has_path("a/b"))
-    # print("a/b/", d.has_path("a/b/"))
-    # print("a/b/c", d.has_path("a/b/c"))
-    # print("a/b/c/", d.has_path("a/b/c/"))
-    # print("a/b/c/d", d.has_path("a/b/c/d"))
-    # print()
-    # print(list(d.leaf_keys()))
-    # print(list(d.leaf_values()))
-    # print(d.__INTERNAL_ATTRS__)
-    # print(d.__dict__)
-    # print(d.__slots__)
-   
+    from pprint import pprint
+    for c in cls.__mro__:
+        pprint(f"{c.__name__}, {c.__dict__}")
+    
+    del inspect, cls

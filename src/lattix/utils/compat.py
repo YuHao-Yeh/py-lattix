@@ -1,11 +1,4 @@
-__all__ = [
-    # constants
-    "HAS_NUMPY", "HAS_PANDAS", "HAS_YAML", 
-    # lazy accessors
-    "numpy", "pandas", "yaml",
-    # generic helpers
-    "get_module", "has_module"
-]
+__all__ = ["get_module", "has_module"]
 
 import importlib
 import sys
@@ -13,13 +6,28 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:   # pragma: no cover
+    import json as json
+    import msgpack as msgpack
     import numpy as numpy
+    import orjson as orjson
     import pandas as pandas
+    import torch as torch
+    import xarray as xarray
     import yaml as yaml
-    
+
+    HAS_JSON: bool
+    HAS_MSGPACK: bool
     HAS_NUMPY: bool
+    HAS_ORJSON: bool
     HAS_PANDAS: bool
+    HAS_TORCH: bool
+    HAS_XARRAY: bool
     HAS_YAML: bool
+    
+
+_OPTIONAL_MODS = {
+    "json", "msgpack", "numpy", "orjson", "pandas", "torch", "xarray", "yaml",
+}
 
 # --- Core Lazy Loader ---
 
@@ -40,41 +48,27 @@ def get_module(name: str) -> ModuleType | None:
         return None
 
 def has_module(name: str | ModuleType | type) -> bool:
-    """
-    Check if a module is available without triggering a hard import if possible.
-    Supports passing a string name, a module object, or a class/type.
-    """
-    target_name: str
-    
-    if isinstance(name, ModuleType):
-        target_name = name.__name__
-    elif isinstance(name, str):
-        target_name = name
-    else:
-        # It's a class or type
-        target_name = name.__module__.split(".")[0]
-
-    # Check sys.modules first (fastest)
-    if target_name in sys.modules:
-        return sys.modules[target_name] is not None
-    
-    # Try safe import
-    return get_module(target_name) is not None
+    """Check if a module exists without importing it."""
+    if name in sys.modules:
+        return sys.modules[name] is not None
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, AttributeError, TypeError):
+        return False
 
 
 # --- Lazy Attributes for Common Libs ---
 
 def __getattr__(name: str) -> Any:
-    # 1. Library Access
-    if name in {"numpy", "pandas", "yaml"}:
-        return get_module(name)
+    if name.startswith("HAS_"):
+        mod_name = name[4:].lower()
+        return has_module(mod_name)
 
-    # 2. Flag Access
-    if name == "HAS_NUMPY":
-        return has_module("numpy")
-    if name == "HAS_PANDAS":
-        return has_module("pandas")
-    if name == "HAS_YAML":
-        return has_module("yaml")
+    # Handle lazy module loading
+    if name in _OPTIONAL_MODS:
+        try:
+            return importlib.import_module(name)
+        except ImportError:
+            return None
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

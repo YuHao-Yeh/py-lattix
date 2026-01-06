@@ -2,12 +2,11 @@ from __future__ import annotations
 
 __all__ = ["LattixNode"]
 
-import logging
 from typing import TYPE_CHECKING, Any
 import weakref
 
 from ..utils.exceptions import (
-    DuplicatedKeyError, UnattachableError, UnexpectedNodeTypeError
+    DuplicatedKeyError, UnattachableError, UnexpectedNodeError
 )
 
 if TYPE_CHECKING:   # pragma: no cover
@@ -16,8 +15,6 @@ if TYPE_CHECKING:   # pragma: no cover
     from ..utils.types import (
         TRAV_ORDER, DictType, ListType, SetType, TupleType
     )
-
-logger = logging.getLogger(__name__)
 
 
 class LattixNode:
@@ -80,8 +77,6 @@ class LattixNode:
         """Detach from parent (if any)."""
         p = self.parent
         if p:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"[NODE:DETACH] key={self._key!r} ← parent={p._key!r}")
             _ = p._children.pop(self._key, None)
            
         self._parent = None
@@ -92,8 +87,6 @@ class LattixNode:
         self._validate_parent_node(parent)
         self._validate_attachable_node(self, parent)
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"[NODE:ATTACH] key={self._key!r} → parent={parent._key!r}")
         self.parent = parent
         parent._children[self._key] = self
         return self
@@ -104,8 +97,6 @@ class LattixNode:
 
         p = self.parent
         if p:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"[NODE:DETACH] key={self._key!r} ← parent={p._key!r}")
             _ = p._children.pop(self._key, None)
         
         if key:
@@ -120,7 +111,7 @@ class LattixNode:
     @staticmethod
     def _validate_parent_node(parent: Any):
         if not isinstance(parent, LattixNode):
-            raise UnexpectedNodeTypeError(parent, parent)
+            raise UnexpectedNodeError(parent, parent)
         return True
 
     @staticmethod
@@ -206,7 +197,6 @@ class LattixNode:
         """
         _seen = _seen or set()
         if id(self) in _seen:
-            logger.warning(f"[NODE:CYCLE] cycle detected on key={self._key!r}")
             raise RuntimeError(f"Cycle detected at LattixNode {self._key}")
         _seen.add(id(self))
     

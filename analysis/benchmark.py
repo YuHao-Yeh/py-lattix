@@ -25,7 +25,7 @@ import pstats
 
 # ✅ Import Lattix
 try:
-   from lattix import Lattix
+   from src.lattix import Lattix
 except ImportError:
    # 若沒有 in-package，允許跑 repository 外部
    from lattix import Lattix
@@ -67,12 +67,12 @@ def bench_single_layer():
 
    t_dyna = timeit(
       "d['x'] = 1; _ = d['x']",
-      setup="from lattix import Lattix; d=Lattix()",
+      setup="from src.lattix import Lattix; d=Lattix()",
       number=N,
    )
 
-   print(f"dict:      {t_dict:.4f}s")
-   print(f"Lattix:  {t_dyna:.4f}s")
+   print(f"dict:   {t_dict:.4f}s")
+   print(f"Lattix: {t_dyna:.4f}s")
    print()
 
 
@@ -86,8 +86,8 @@ def bench_nested_depth_access():
     t_dict = timeit("_ = nested['a']['b']['c']['d']['e']", number=N, globals=locals())
     t_dyna = timeit("_ = dyna['a/b/c/d/e']", number=N, globals=locals())
 
-    print(f"dict:      {t_dict:.4f}s")
-    print(f"Lattix:  {t_dyna:.4f}s")
+    print(f"dict:   {t_dict:.4f}s")
+    print(f"Lattix: {t_dyna:.4f}s")
     print()
 
 
@@ -110,8 +110,8 @@ def bench_large_insert_and_get():
         _ = dyna[f"root/{i}"]
     t_dyna = perf_counter() - t0
 
-    print(f"dict:       {t_dict:.4f}s")
-    print(f"Lattix:   {t_dyna:.4f}s")
+    print(f"dict:   {t_dict:.4f}s")
+    print(f"Lattix: {t_dyna:.4f}s")
     print()
 
 
@@ -126,12 +126,12 @@ def bench_defaultdict():
 
     t_dyna = timeit(
         "d['x'].append(1); _ = d['x']",
-        setup="from lattix import Lattix; d=Lattix({'x': []}, lazy_create=True)",
+        setup="from src.lattix import Lattix; d=Lattix({'x': []}, lazy_create=True)",
         number=N,
     )
 
     print(f"defaultdict: {t_defaultdict:.4f}s")
-    print(f"Lattix:    {t_dyna:.4f}s")
+    print(f"Lattix:      {t_dyna:.4f}s")
     print()
 
 
@@ -167,6 +167,26 @@ def profile_dyna():
     # stats.print_stats(PRINT_TOP)
     stats.print_stats()
 
+def profile_dyna_dict():
+    print("🔹 Profiling dict with cProfile")
+
+    d = dict({})
+
+    def workload():
+        d = {"a": {"b": {"c": {}}}}
+        for i in range(30_000):
+            d["a"]["b"]["c"][i] = i
+            _ = d["a"]["b"]["c"][i]
+
+    profile = cProfile.Profile()
+    profile.enable()
+    workload()
+    profile.disable()
+
+    stats = pstats.Stats(profile).sort_stats("tottime")
+    # stats.print_stats(PRINT_TOP)
+    stats.print_stats()
+
 
 # ---------------------------------------------------------------------------
 # main
@@ -179,3 +199,4 @@ if __name__ == "__main__":
     bench_defaultdict()
     bench_json_compare()
     profile_dyna()
+    profile_dyna_dict()

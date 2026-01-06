@@ -2,12 +2,12 @@ from collections.abc import Iterator
 import pytest
 from typing import Any
 
-from src.lattix._core.abstract import AbstractDict, MutableAbstractDict
+from src.lattix._core.interfaces import LattixMapping, MutableLattixMapping
 
 
 # ---------- Concrete Implementations ----------
 
-class ConcreteReadOnly(AbstractDict):
+class ConcreteReadOnly(LattixMapping):
     """A minimal read-only implementation."""
     def __init__(self, data: dict):
         self._data = data
@@ -24,7 +24,7 @@ class ConcreteReadOnly(AbstractDict):
     def _config(self) -> Any:
         return ()
 
-class ConcreteMutable(MutableAbstractDict):
+class ConcreteMutable(MutableLattixMapping):
     """A minimal mutable implementation."""
     def __init__(self, data: dict = None):
         self._data = data if data is not None else {}
@@ -48,17 +48,17 @@ class ConcreteMutable(MutableAbstractDict):
         return ()
 
 
-# ---------- Tests 1: AbstractDict ----------
+# ---------- Tests 1: LattixMapping ----------
 
-class TestAbstractDict:
+class TestLattixMapping:
     def test_abstract_dict_valid_name(self):
         # --- 1. _valid_name regex logic ---
-        assert AbstractDict._valid_name("valid_name") is True
-        assert AbstractDict._valid_name("_valid") is True
-        assert AbstractDict._valid_name("valid1") is True
-        assert AbstractDict._valid_name("1invalid") is False
-        assert AbstractDict._valid_name("invalid-name") is False
-        assert AbstractDict._valid_name("") is False
+        assert LattixMapping._valid_name("valid_name") is True
+        assert LattixMapping._valid_name("_valid") is True
+        assert LattixMapping._valid_name("valid1") is True
+        assert LattixMapping._valid_name("1invalid") is False
+        assert LattixMapping._valid_name("invalid-name") is False
+        assert LattixMapping._valid_name("") is False
 
     def test_abstract_dict_get(self):
         # --- 2. get (found and default) ---
@@ -81,7 +81,7 @@ class TestAbstractDict:
         result = d.to_dict()
         assert isinstance(result, dict)
         assert result["outer"] == 1
-        # Check that the nested AbstractDict was converted to a plain dict
+        # Check that the nested LattixMapping was converted to a plain dict
         assert isinstance(result["nested"], dict) 
         assert result["nested"]["inner"] == 2
         # Check that plain dicts remain plain dicts
@@ -90,12 +90,12 @@ class TestAbstractDict:
     def test_construct_not_implemented(self):
         # --- 5. _construct raising NotImplementedError ---
         with pytest.raises(NotImplementedError):
-            AbstractDict._construct({}, ())
+            LattixMapping._construct({}, ())
 
 
-# ---------- Tests 2: MutableAbstractDict ----------
+# ---------- Tests 2: MutableLattixMapping ----------
 
-class TestMutableAbstractDict:
+class TestMutableLattixMapping:
     def test_mutable_update_variations(self):
         # --- 1. update ---
         

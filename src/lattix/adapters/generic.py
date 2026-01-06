@@ -22,7 +22,7 @@ from pathlib import Path
 import pkgutil
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from ..utils.compat import get_module
+from ..utils import compat
 
 if TYPE_CHECKING:   # pragma: no cover
     from collections.abc import Callable, Iterable, Mapping
@@ -77,8 +77,8 @@ def get_adapter_registry() -> AdapterRegistry:
 
 def _register_numpy_adapters() -> None:
     """Called only when a numpy object is encountered."""
-    np_pkg = get_module("numpy")
-    if not np_pkg:
+    # np_pkg = get_module("numpy")
+    if not compat.HAS_NUMPY:
         return
 
     def handle_numpy_array(value: Any, recurse: RecurseFunc) -> Any:
@@ -87,12 +87,13 @@ def _register_numpy_adapters() -> None:
         except Exception:
             return list(value)
     
-    register_adapter(np_pkg.ndarray, handle_numpy_array)
+    # register_adapter(np_pkg.ndarray, handle_numpy_array)
+    register_adapter(compat.numpy.ndarray, handle_numpy_array)
 
 def _register_pandas_adapters() -> None:
     """Called only when a pandas object is encountered."""
-    pd_pkg = get_module("pandas")
-    if not pd_pkg:
+    # pd_pkg = get_module("pandas")
+    if not compat.HAS_PANDAS:
         return
 
     def handle_series(value: Any, recurse: RecurseFunc) -> Any:
@@ -104,14 +105,17 @@ def _register_pandas_adapters() -> None:
         except Exception:
             return value.to_dict()
 
-    register_adapter(pd_pkg.Series, handle_series)
-    register_adapter(pd_pkg.DataFrame, handle_dataframe)
+    # register_adapter(pd_pkg.Series, handle_series)
+    # register_adapter(pd_pkg.DataFrame, handle_dataframe)
+    register_adapter(compat.pandas.Series, handle_series)
+    register_adapter(compat.pandas.DataFrame, handle_dataframe)
 
 def _register_torch_adapters() -> None:
     """Called only when a torch object is encountered."""
-    tm = get_module("torch")
-    if not tm:
+    # tm = get_module("torch")
+    if not compat.HAS_TORCH:
         return
+    tm = compat.torch
 
     def handle_tensor(value: Any, recurse: RecurseFunc) -> Any:
         try:
@@ -129,9 +133,10 @@ def _register_torch_adapters() -> None:
 
 def _register_xarray_adapters() -> None:
     """Called only when an xarray object is encountered."""
-    xm = get_module("xarray")
-    if not xm: 
+    # xm = get_module("xarray")
+    if not compat.HAS_XARRAY: 
         return
+    xm = compat.xarray
 
     def handle_dataarray(value: Any, recurse: RecurseFunc) -> Any:
         try:
@@ -168,11 +173,11 @@ def _ensure_library_adapters(obj: Any) -> None:
     # 2. Check if we have a pending handler for this library
     if root_module in _LAZY_LIBRARY_HANDLERS:
         handler = _LAZY_LIBRARY_HANDLERS.pop(root_module)
-        logger.debug(f"Initializing deferred adapters for library: {root_module}")
+
         try:
             handler()
         except Exception as e:
-            logger.warning(f"Failed to register adapters for {root_module}: {e}")
+            logger.error(f"Failed to register adapters for {root_module}: {e}", exc_info=True)
 
 
 # ======================================================
@@ -249,6 +254,7 @@ register_constructor_defaults(Path, _expand=True)
 
 def construct_from_iterable(cls: TypeType[Any], iterable: Iterable[Any]) -> Any:
     name = fqname_for_cls(cls)
+
     # 1. Special-case str
     if cls is str:
         return str(list(iterable))
@@ -268,13 +274,10 @@ def construct_from_iterable(cls: TypeType[Any], iterable: Iterable[Any]) -> Any:
         try:
             # Path(*iterable)
             if expand:
-                logger.debug(f"[debug expand] calling {name}(*{iterable})")
                 return cls(*iterable, **defaults)
             # Other containers: array, deque, defaultdict, ChainMap, etc.
-            logger.debug(f"[debug defaults] calling {name}(*{posargs}, iterable, **{defaults})")
             return cls(*posargs, iterable, **defaults)
         except Exception as e:
-            logger.debug(f"[debug exception @ default_args] {e!r}")
             pass
     
     # 4. Fallback：list(iterable)
@@ -349,7 +352,6 @@ def discover_and_register_plugins(package_name: str) -> ListType[str]:
     try:
         pkg = import_module(package_name)
     except Exception as e:
-        logger.debug("package not importable: %s", e)
         return found
 
     if not hasattr(pkg, "__path__"):
@@ -360,7 +362,8 @@ def discover_and_register_plugins(package_name: str) -> ListType[str]:
             import_module(name)
             found.append(name)
         except Exception as e:
-            logger.warning("Failed to import plugin %s: %r", name, e)
+            logger.error(f"Failed to import plugin {name}: {e}", exc_info=True)
+            pass
     return found
 
 

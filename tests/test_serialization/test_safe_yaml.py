@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from src.lattix.serialization import safe_yaml
-from src.lattix.utils.exceptions import NoPyYAMLError
+from src.lattix.utils import exceptions
 
 top_mod = "src.lattix"
 
@@ -271,10 +271,10 @@ class TestYAMLSerialization:
             # --- Assertion Phase ---
             
             # Verify public functions raise Error
-            with pytest.raises(NoPyYAMLError):
+            with pytest.raises(exceptions.OptionalImportError):
                 safe_yaml.load("a: 1")
                 
-            with pytest.raises(NoPyYAMLError):
+            with pytest.raises(exceptions.OptionalImportError):
                 safe_yaml.dump({"a": 1})
                 
             # Verify register_type does nothing safely

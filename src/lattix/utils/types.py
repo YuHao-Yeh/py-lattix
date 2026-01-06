@@ -12,7 +12,11 @@ import fractions
 import pathlib
 import uuid
 
-from .compat import HAS_NUMPY, HAS_PANDAS, numpy as np, pandas as pd
+from . import compat
+HAS_NUMPY = compat.HAS_NUMPY
+HAS_PANDAS = compat.HAS_PANDAS
+np = compat.numpy
+pd = compat.pandas
 
 
 # Pyhon 3.9+

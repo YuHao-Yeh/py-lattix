@@ -2,30 +2,29 @@ from __future__ import annotations
 
 __all__ = ["ThreadingMixin", "LogicalMixin", "FormatterMixin"]
 
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from collections.abc import Iterable, Mapping
 from itertools import cycle
 import json
 import logging
 import pprint
 import textwrap
-from threading import Lock, RLock
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from threading import RLock
+from typing import TYPE_CHECKING, Any, cast
 
 from ..utils.exceptions import (
-   NoPyYAMLError,
-   OperandTypeError,
-   ThreadSafetyLevelTypeError,
-   ThreadSafetyLevelValueError,
-   ThreadingObjectTypeError,
-   UnattachableError,
-   LockExistenceError,
+    OptionalImportError,
+    OperandTypeError,
+    ArgTypeError,
+    UnattachableError,
+    LockExistenceError,
 )
-from ..utils.common import serialize
+from ..utils import compat
+from ..utils.common import serialize, is_primitive
 
 
 if TYPE_CHECKING:   # pragma: no cover
-    from _thread import LockType, RLock as RLockType
+    from _thread import RLock as RLockType
     from types import TracebackType
     from typing_extensions import Self
     from ..utils.types import (
@@ -34,155 +33,140 @@ if TYPE_CHECKING:   # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-class _HasChildren(Protocol):
-    children: Mapping[str, Any]
 
-
-class ThreadingMixin(metaclass=ABCMeta):
+class ThreadingMixin:
     """
     Mixin providing thread-safety configuration and lock inheritance.
     """
-    _ts_level: int
-    _lock: LockType | None
-    _rlock: RLockType | None
+    __slots__ = ()
+    _locking_enabled: bool
+    _lock: RLockType | None
     _detached: bool
    
     # ---------- Init ----------
-    def _init_threading(self, parent: ThreadingMixin | None = None, level: int = 0):
+    def _init_threading(self, parent: ThreadingMixin | None = None, enable_lock: bool = False):
         """Initialize threading context. If parent is given, inherit its locks."""
-        self._validate_level(level)
+        self._validate_bool(enable_lock)
 
         if parent:
             # inherit parent's locks
             self.attach_thread(parent)
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"[TM:INIT] inherit: self={hex(id(self))} parent={hex(id(parent))} "
-                    f"level={getattr(self, '_ts_level', None)} lock={hex(id(self._lock)) if self._lock else None} "
-                    f"rlock={hex(id(self._rlock)) if self._rlock else None}"
-                )
+            # if logger.isEnabledFor(logging.DEBUG):
+            #     logger.debug(
+            #         f"[TM:INIT] inherit: self={hex(id(self))} parent={hex(id(parent))} "
+            #         f"enabled={getattr(self, '_locking_enabled', None)}"
+            #         f"lock={hex(id(self._lock)) if self._lock else None} "
+            #     )
         else:
             # create new locks
-            object.__setattr__(self, "_ts_level", level)
-            object.__setattr__(self, "_lock", Lock() if level == 1 else None)
-            object.__setattr__(self, "_rlock", RLock() if level == 2 else None)
+            object.__setattr__(self, "_locking_enabled", enable_lock)
+            object.__setattr__(self, "_lock", RLock() if enable_lock else None)
             object.__setattr__(self, "_detached", True)
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"[TM:INIT] new: self={hex(id(self))} level={level} "
-                    f"lock={hex(id(self._lock)) if self._lock else None} rlock={hex(id(self._rlock)) if self._rlock else None}"
-                )
+            # if logger.isEnabledFor(logging.DEBUG):
+            #     logger.debug(
+            #         f"[TM:INIT] new: self={hex(id(self))} enabled={enable_lock} "
+            #         f"lock={hex(id(self._lock)) if self._lock else None}"
+            #     )
 
     @staticmethod
-    def _validate_level(level: Any):
-        if not isinstance(level, int):
-            raise ThreadSafetyLevelTypeError(level)
-        if level not in (0, 1, 2):
-            raise ThreadSafetyLevelValueError(level)
-    
+    def _validate_bool(value: Any):
+        if type(value) is not bool:
+            raise ArgTypeError(arg="enable_locking", value=value, ideal_type=bool)
+
     @staticmethod
     def _validate_parent(parent: Any):
         if not isinstance(parent, ThreadingMixin):
-            raise ThreadingObjectTypeError("parent", parent)
+            raise ArgTypeError(arg="parent", value=parent, ideal_type=ThreadingMixin)
         return True
 
     @staticmethod
     def _validate_attachable(obj: ThreadingMixin):
         if not getattr(obj, "_detached", True):
             raise UnattachableError
-        if getattr(obj, "_lock", None) or getattr(obj, "_rlock", None):
+        if getattr(obj, "_lock", None):
             raise LockExistenceError
         return True
 
     # ---------- Lock behavior ----------
     @property
-    def ts_level(self):
-        return getattr(self, "_ts_level", 0)
-        # return self._ts_level
+    def locking_enabled(self):
+        return getattr(self, "_locking_enabled", False)
     
-    @ts_level.setter
-    def ts_level(self, level: int):
-        self._validate_level(level)
-        # set locks by propagating references; do not create/destroy locks in destructors
-        if level == 0:
-            self._propagate_lock(self, 0, None, None)
-        elif level == 1:
-            self._propagate_lock(self, 1, Lock(), None)
-        else:   # level == 2
-            self._propagate_lock(self, 2, None, RLock())
+    @locking_enabled.setter
+    def locking_enabled(self, enable: bool):
+        self._validate_bool(enable)
+        
+        if enable:
+            self._propagate_lock(self, True, RLock())
+        else:
+            self._propagate_lock(self, False, None)
 
     @staticmethod
     @abstractmethod
     def _propagate_lock(
         obj: Any, 
-        level: int, 
-        lock:  LockType | None, 
-        rlock: RLockType | None, 
-        seen:  SetType[Any] | None=None
+        enable_lock: bool, 
+        lock: RLockType | None, 
+        seen: SetType[int] | None=None
     ) -> None:
         """Abstract: implemented by container class (Lattix) to traverse subtree."""
         raise NotImplementedError
 
     def propagate_lock(
         self, 
-        level: int, 
-        lock: LockType | None, 
-        rlock: RLockType | None, 
-        seen: SetType[Any] | None = None
+        enable_lock: bool, 
+        lock: RLockType | None, 
+        seen: SetType[int] | None = None
     ):
-        self._propagate_lock(self, level, lock, rlock, seen)
+        self._propagate_lock(self, enable_lock, lock, seen)
 
     def detach_thread(self, clear_locks: bool = False):
         """Reinitialize locks to make this object independent."""
         if clear_locks:
-            lvl = 0
-            object.__setattr__(self, "_ts_level", lvl)
+            enabled = False
         else:
-            lvl = getattr(self, "_ts_level", 0)
+            enabled = getattr(self, "_locking_enabled", False)
 
-        self._validate_level(lvl)
-        object.__setattr__(self, "_lock", Lock() if lvl == 1 else None)
-        object.__setattr__(self, "_rlock", RLock() if lvl == 2 else None)
+        object.__setattr__(self, "_locking_enabled", enabled)
+        object.__setattr__(self, "_lock", RLock() if enabled else None)
         object.__setattr__(self, "_detached", True)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"[TM:DETACH] id={hex(id(self))} level={lvl} "
-                f"new_lock={hex(id(self._lock)) if self._lock else None} "
-                f"new_rlock={hex(id(self._rlock)) if self._rlock else None}"
-            )
+        
+        # if logger.isEnabledFor(logging.DEBUG):
+        #     logger.debug(
+        #         f"[TM:DETACH] id={hex(id(self))} enabled={enabled} "
+        #         f"new_lock={hex(id(self._lock)) if self._lock else None} "
+        #     )
     
     def attach_thread(self, parent: Any):
         """Adopt parent's locks."""
         self._validate_parent(parent)
         self._validate_attachable(self)
 
-        object.__setattr__(self, "_ts_level", parent._ts_level)
+        object.__setattr__(self, "_locking_enabled", parent._locking_enabled)
         object.__setattr__(self, "_lock", parent._lock)
-        object.__setattr__(self, "_rlock", parent._rlock)
         object.__setattr__(self, "_detached", False)
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"[TM:ATTACH] id={hex(id(self))} parent_id={hex(id(parent))} "
-                f"level={self._ts_level} lock={hex(id(self._lock)) if self._lock else None} "
-                f"rlock={hex(id(self._rlock)) if self._rlock else None}"
-            )
+        # if logger.isEnabledFor(logging.DEBUG):
+        #     logger.debug(
+        #         f"[TM:ATTACH] id={hex(id(self))} parent_id={hex(id(parent))} "
+        #         f"enabled={self._locking_enabled} "
+        #         f"lock={hex(id(self._lock)) if self._lock else None}"
+        #     )
 
     def transplant_thread(self, parent: Any):
         """Transplant locks to parent's locks."""
         self._validate_parent(parent)
 
-        object.__setattr__(self, "_ts_level", parent._ts_level)
+        object.__setattr__(self, "_locking_enabled", parent._locking_enabled)
         object.__setattr__(self, "_lock", parent._lock)
-        object.__setattr__(self, "_rlock", parent._rlock)
         object.__setattr__(self, "_detached", False)
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"[TM:TRANSPLANT] id={hex(id(self))} parent_id={hex(id(parent))} "
-                f"level={self._ts_level} lock={hex(id(self._lock)) if self._lock else None} "
-                f"rlock={hex(id(self._rlock)) if self._rlock else None}"
-            )
+        # if logger.isEnabledFor(logging.DEBUG):
+        #     logger.debug(
+        #         f"[TM:TRANSPLANT] id={hex(id(self))} parent_id={hex(id(parent))} "
+        #         f"enabled={self._locking_enabled} "
+        #         f"lock={hex(id(self._lock)) if self._lock else None}"
+        #     )
 
     # ---------- Lock operations ----------
     def __enter__(self):
@@ -197,22 +181,20 @@ class ThreadingMixin(metaclass=ABCMeta):
     ):
         self.release()
 
-    def acquire(self, blocking: bool = True, timeout: float = -0.1) -> bool:
-        if self._rlock:
-            return self._rlock.acquire(blocking, timeout)
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        if self._lock:
+            return self._lock.acquire(blocking, timeout)
         return False
 
     def release(self):
-        if self._rlock:
-            self._rlock.release()
-        elif self._lock:
+        if self._lock:
             self._lock.release()
 
     def _describe_lock(self) -> str:
         """Helper for debugging lock inheritance."""
         return str(
-            f"rlock={hex(id(self._rlock)) if self._rlock else None} "
-            f"level={self._ts_level}"
+            f"lock={hex(id(self._lock)) if self._lock else None} "
+            f"enabled={self._locking_enabled}"
         )
 
 
@@ -264,6 +246,7 @@ class LogicalMixin:
         print(d1 - d2)    # → {"a": 1}
         print(d1 ^ d2)    # → {"a": 1, "c": 3}
     """
+    __slots__ = ()
     
     @classmethod
     @abstractmethod
@@ -404,6 +387,7 @@ class FormatterMixin:
     You can register custom pprint styles via:
         FormatterMixin.register_style("name", func)
     """
+    __slots__ = ()
     _STYLE_HANDLERS: StyleRegistry = {}
 
     # =====================================================
@@ -434,10 +418,11 @@ class FormatterMixin:
     def _pprint_default(obj: Any, indent: int = 0, colored: bool = True, 
                         compact: bool = False, **kwargs: Any) -> str:
         """Recursive, indented, optionally colored display."""
-        from ..utils.compat import (
-            HAS_NUMPY, HAS_PANDAS, numpy as np, pandas as pd
-        )
-
+        HAS_NUMPY = compat.HAS_NUMPY
+        HAS_PANDAS = compat.HAS_PANDAS
+        np = compat.numpy
+        pd = compat.pandas
+        
         # --- ANSI colors ---
         COLORS = kwargs.pop("COLORS", [
             "\033[38;5;39m",   # blue
@@ -463,29 +448,27 @@ class FormatterMixin:
         
         def _handle_pandas(curr_obj: Any) -> str | None:
             """Returns formatted string if object is Pandas, else None."""
-            if not (HAS_PANDAS and isinstance(curr_obj, (pd.DataFrame, pd.Series))):
+            if not HAS_PANDAS:
                 return None
-            
-            pd_obj = cast(Any, curr_obj)
-            shape_str = f"shape={pd_obj.shape}"
+            if not isinstance(curr_obj, (pd.DataFrame, pd.Series)):
+                return None
 
             try:
                 if isinstance(curr_obj, pd.DataFrame):
-                    data_str = pd_obj.to_string(max_rows=10, show_dimensions=False)
+                    data_str = curr_obj.to_string(max_rows=10, show_dimensions=False)
                 else:
-                    data_str = pd_obj.to_string(length=False, dtype=True, name=True)
-                return f"<{type(pd_obj).__name__} {shape_str}>\n{data_str}"
+                    data_str = curr_obj.to_string(length=False, dtype=True, name=True)
+                return f"<{type(curr_obj).__name__} shape={curr_obj.shape}>\n{data_str}"
             except Exception:
-                return str(pd_obj)
+                return str(curr_obj)
         
         def _handle_numpy(curr_obj: Any) -> str | None:
             """Returns formatted string if object is Numpy, else None."""
             if not (HAS_NUMPY and isinstance(curr_obj, np.ndarray)):
                 return None
-            
-            np_obj = cast(Any, curr_obj)
-            header = f"<ndarray shape={np_obj.shape} dtype={np_obj.dtype}>"
-            data_str = np.array2string(np_obj, edgeitems=2, threshold=5, separator=', ')
+
+            header = f"<ndarray shape={curr_obj.shape} dtype={curr_obj.dtype}>"
+            data_str = np.array2string(curr_obj, edgeitems=2, threshold=5, separator=', ')
             return f"{header}\n{data_str}"
         
         def _format_kv_pair(k_str: str, v_str: str) -> str:
@@ -508,24 +491,14 @@ class FormatterMixin:
         
         def _handle_mapping(curr_obj: Mapping[Any, Any], level: int, curr_color: str) -> str:
             # 1. Determine items to print
-            items_map: Mapping[Any, Any]
-            type_name = ""
-
-            # Support for Lattix internal structure if needed, or standard items
-            if isinstance(curr_obj, FormatterMixin) and hasattr(curr_obj, "children"):
-                items_map = cast(_HasChildren, curr_obj).children
-                type_name = type(curr_obj).__name__
-            else:
-                items_map = curr_obj
-                if type(items_map) is not dict:
-                    type_name = type(curr_obj).__name__
+            items_map: Mapping[Any, Any] = getattr(curr_obj, "_children", curr_obj)
+            type_name = type(curr_obj).__name__ if type(curr_obj) is not dict else ""
 
             # 2. Setup Braces
-            open_brace = f"{type_name} {{" if type_name else "{"
-            close_brace = "}"
+            open_b = f"{type_name} {{" if type_name else "{"
 
             if not items_map:
-                return f"{open_brace}{close_brace}"
+                return f"{open_b}" + "}"
 
             # 3. Format Itms
             next_color = next(color_cycle)
@@ -545,28 +518,28 @@ class FormatterMixin:
             # 4. Join Logic
             if compact and (not any_multiline) and (len(formatted_items) < 5):
                 inner = ", ".join(formatted_items)
-                return f"{colorize(open_brace, curr_color)} {inner} {colorize(close_brace, curr_color)}"
+                return f"{colorize(open_b, curr_color)} {', '.join(formatted_items)} {colorize('}', curr_color)}"
             else:
-                # Standard indented view
-                # inner = ",\n".join(f"  {item}" for item in formatted_items)
-                # Add indentation to the whole block of items
-                # inner = ",\n".join(textwrap.indent(item, "  ") for item in formatted_items)
                 inner = ",\n".join(_indent_text(item, 1) for item in formatted_items)
                 return (
-                   f"{colorize(open_brace, curr_color)}\n"
+                   f"{colorize(open_b, curr_color)}\n"
                    f"{inner}\n"
-                   f"{colorize(close_brace, curr_color)}"
+                   f"{colorize('}', curr_color)}"
                 )
         
         def _handle_iterable(curr_obj: Iterable[Any], level: int, curr_color: str) -> str:
             # 1. Setup Braces
-            if isinstance(curr_obj, list): open_b, close_b = "[", "]"
-            elif isinstance(curr_obj, tuple): open_b, close_b = "(", ")"
-            elif isinstance(curr_obj, set): open_b, close_b = "{", "}"
-            else: open_b, close_b = "[", "]"  # fallback
+            if isinstance(curr_obj, list):
+                braces = ("[", "]")
+            elif isinstance(curr_obj, tuple):
+                braces = ("(", ")")
+            elif isinstance(curr_obj, set):
+                braces = ("{", "}")
+            else:
+                braces = ("[", "]")  # fallback
 
             if not curr_obj:
-                return f"{open_b}{close_b}"
+                return f"{braces[0]}{braces[1]}"
 
             # 2. Formt Items
             next_color = next(color_cycle)
@@ -574,23 +547,23 @@ class FormatterMixin:
                 _recursive_format(x, level + 1, next_color) for x in curr_obj
             ]
             # Detect multiline children to force vertical expansion
-            any_multiline = any("\n" in item for item in formatted_items)
+            any_multiline = any("\n" in x for x in formatted_items)
             
             # 3. Join
             # If it's a single-element tuple, ensure we add a comma
             if compact and (not any_multiline) and (len(formatted_items) <= 5):
                 inner = ", ".join(formatted_items)
-                if isinstance(curr_obj, tuple) and len(formatted_items) == 1:
+                if isinstance(curr_obj, tuple) and (len(formatted_items) == 1):
                     inner += ","
-                return f"{colorize(open_b, curr_color)}{inner}{colorize(close_b, curr_color)}"
+                return f"{colorize(braces[0], curr_color)}{inner}{colorize(braces[1], curr_color)}"
             
             # Vertical Layout
             inner = ",\n".join(_indent_text(x, 1) for x in formatted_items)
 
             return (
-                f"{colorize(open_b, curr_color)}\n"
+                f"{colorize(braces[0], curr_color)}\n"
                 f"{inner}\n"
-                f"{colorize(close_b, curr_color)}"
+                f"{colorize(braces[1], curr_color)}"
             )
         
         # --- Main Recursive Logic ---
@@ -599,7 +572,7 @@ class FormatterMixin:
             # 1. Cycle Detection
             oid = id(curr_obj)
             if oid in seen:
-                return f"<Cycle {type(curr_obj).__name__} ...>"
+                return f"<Circular {type(curr_obj).__name__} at {hex(oid)}>"
             
             # 2. Leaf Nodes (Pandas / Numpy)
             if (res := _handle_pandas(curr_obj)) is not None:
@@ -615,7 +588,7 @@ class FormatterMixin:
                     return _handle_mapping(curr_obj, level, curr_color)
                 
                 # Iterable (excluding strings/bytes)
-                if isinstance(curr_obj, Iterable) and not isinstance(curr_obj, (str, bytes, bytearray)):
+                if isinstance(curr_obj, Iterable) and not is_primitive(curr_obj):
                     seen.add(oid)
                     return _handle_iterable(curr_obj, level, curr_color)
             finally:
@@ -675,11 +648,11 @@ class FormatterMixin:
                         type_name = ""
 
                     # Prepare Braces
-                    open_brace = f"{type_name} {{" if type_name else "{"
+                    open_b = f"{type_name} {{" if type_name else "{"
                     close_brace = "}"
 
                     if not items_map:
-                        return f"{open_brace}{close_brace}"
+                        return f"{open_b}{close_brace}"
 
                     formatted_items: ListType[str] = []
                     any_multiline_items = False
@@ -712,7 +685,7 @@ class FormatterMixin:
                     # Join Logic
                     if compact and not any_multiline_items and len(formatted_items) < 5:
                         inner = ", ".join(formatted_items)
-                        return f"{colorize(open_brace, curr_color)} {inner} {colorize(close_brace, curr_color)}"
+                        return f"{colorize(open_b, curr_color)} {inner} {colorize(close_brace, curr_color)}"
                     else:
                         # Standard indented view
                         # inner = ",\n".join(f"  {item}" for item in formatted_items)
@@ -720,7 +693,7 @@ class FormatterMixin:
                         # inner = ",\n".join(textwrap.indent(item, "  ") for item in formatted_items)
                         inner = ",\n".join(_indent_text(item, 1) for item in formatted_items)
                         return (
-                           f"{colorize(open_brace, curr_color)}\n"
+                           f"{colorize(open_b, curr_color)}\n"
                            f"{inner}\n"
                            f"{colorize(close_brace, curr_color)}"
                         )
@@ -776,8 +749,7 @@ class FormatterMixin:
 
         # Start recursion
         result = _recursive_format(obj, 0, next(color_cycle))
-        # return _indent_text(result, indent) if indent > 0 else result
-        return result
+        return _indent_text(result, indent // 2) if indent > 0 else result
 
     @staticmethod
     def _pprint_json(obj: Any, indent: int = 2, **kwargs: Any) -> str:
@@ -793,15 +765,14 @@ class FormatterMixin:
     @staticmethod
     def _pprint_yaml(obj: Any, indent: int = 2, **kwargs: Any) -> str:
         """YAML-style pretty-print (requires PyYAML)."""
-        from ..utils.compat import HAS_YAML, yaml
 
-        if not HAS_YAML:
-            raise NoPyYAMLError
+        if not compat.HAS_YAML:
+            raise OptionalImportError("PyYAML", "YAML serialization", "pyyaml")
         try:
             safe_obj = serialize(obj)
             kwargs.pop("colored", None)
             kwargs.pop("compact", None)
-            return cast(str, yaml.safe_dump(
+            return cast(str, compat.yaml.safe_dump(
                 safe_obj,
                 indent=indent,
                 allow_unicode=True,

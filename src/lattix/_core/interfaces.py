@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-__all__ = ["AbstractDict", "MutableAbstractDict"]
+__all__ = ["LattixMapping", "MutableLattixMapping"]
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, MutableMapping
 import re
 from typing import TYPE_CHECKING, TypeVar, cast
+
 
 if TYPE_CHECKING:   # pragma: no cover
     from collections.abc import Iterable, Iterator
@@ -17,7 +18,7 @@ _VT = TypeVar("_VT")
 _ASCII_ATTR_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
-class AbstractDict(ABC, Mapping[_KT, _VT]):
+class LattixMapping(ABC, Mapping[_KT, _VT]):
     """Abstract base class for read-only dynamic mapping structures."""
 
     # ========== Required core methods ==========
@@ -56,7 +57,7 @@ class AbstractDict(ABC, Mapping[_KT, _VT]):
 
     def to_dict(self) -> DictType[_KT, Any]:
         """Default recursive conversion to plain dict."""
-        return {k: (v.to_dict() if isinstance(v, AbstractDict) else v)
+        return {k: (v.to_dict() if isinstance(v, LattixMapping) else v)
                 for k, v in self.items()}
 
     def __contains__(self, key: Any) -> bool:
@@ -67,8 +68,8 @@ class AbstractDict(ABC, Mapping[_KT, _VT]):
         return bool(name and _ASCII_ATTR_RE.match(name))
 
 
-class MutableAbstractDict(AbstractDict[_KT, _VT], MutableMapping[_KT, _VT]):
-    """Extends AbstractDict to support mutation."""
+class MutableLattixMapping(LattixMapping[_KT, _VT], MutableMapping[_KT, _VT]):
+    """Extends LattixMapping to support mutation."""
 
     # ========== Required mutation interface ==========
     @abstractmethod
@@ -97,14 +98,14 @@ class MutableAbstractDict(AbstractDict[_KT, _VT], MutableMapping[_KT, _VT]):
         self, 
         other: MutableMapping[_KT, _VT], 
         overwrite: bool = True
-    ) -> MutableAbstractDict[_KT, _VT]:
+    ) -> MutableLattixMapping[_KT, _VT]:
         """Recursive merge template."""
         if not isinstance(other, Mapping):  # pyright: ignore
             raise TypeError(f"Expected map-like, got {type(other).__name__}")
 
         for k, v in other.items():
             if (k in self
-                and isinstance(self[k], MutableAbstractDict)
+                and isinstance(self[k], MutableLattixMapping)
                 and isinstance(v, Mapping)):
                 self[k].merge(v, overwrite)
             elif overwrite or k not in self:
@@ -114,7 +115,7 @@ class MutableAbstractDict(AbstractDict[_KT, _VT], MutableMapping[_KT, _VT]):
 
 if __name__ == "__main__":
     import inspect
-    for abstract in (AbstractDict, MutableAbstractDict):
+    for abstract in (LattixMapping, MutableLattixMapping):
         for c in abstract.__mro__:
             slots = getattr(c, "__slots__", None)
             has_dict = False
@@ -131,3 +132,5 @@ if __name__ == "__main__":
             print(c.__name__, "->", "has __dict__ attribute?", "__dict__" in c.__dict__)
         
         print()
+    
+    del inspect

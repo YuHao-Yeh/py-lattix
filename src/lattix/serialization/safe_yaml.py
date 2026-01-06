@@ -76,9 +76,8 @@ import decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-
-from ..utils.compat import HAS_YAML, yaml
-from ..utils.exceptions import NoPyYAMLError
+from ..utils import compat
+from ..utils.exceptions import OptionalImportError
 
 if TYPE_CHECKING:   # pragma: no cover
     from typing import TypeVar, IO
@@ -95,6 +94,9 @@ if TYPE_CHECKING:   # pragma: no cover
 # ======================================================
 # Conditional Definition (Handling missing PyYAML)
 # ======================================================
+
+HAS_YAML = compat.HAS_YAML
+yaml = compat.yaml
 
 if HAS_YAML:
     Dumper = yaml.Dumper
@@ -136,7 +138,7 @@ else:
 
 def _require_yaml() -> None:
     if not HAS_YAML or not yaml:
-        raise NoPyYAMLError
+        raise OptionalImportError("PyYAML", "YAML support", "pyyaml")
 
 
 # ======================================================
