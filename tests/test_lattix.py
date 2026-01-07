@@ -1482,39 +1482,66 @@ class TestLifeCycle:
 
     # --- 4. __del__ ---
 
-    def test_del_is_finalizing(self):
-        d = Lattix(key="test_node")
-        
-        with patch("sys.is_finalizing", return_value=True):
-            with patch(f"{top_mod}.structures.mapping.logger") as mock_logger:
-                d.__del__()
-                mock_logger.isEnabledFor.assert_not_called()
-    
-    def test_del_exception_suppression(self):
-        d = Lattix(key="faulty_node")
-        object.__setattr__(d, "_detached", False) # Set state to trigger the inner if
-        
-        with patch(f"{top_mod}.structures.mapping.logger.isEnabledFor", side_effect=RuntimeError("Logging failed")):
-            try:
-                d.__del__()
-            except Exception as e:
-                pytest.fail(f"__del__ raised {e} instead of suppressing it with 'pass'")
+    def test_del(self):
+        import weakref
+        import gc
 
-
-    def test_del_warning(self, caplog):
-        import logging
-        # Trigger the __del__ warning by creating a Lattix with a parent and not detaching
         parent = Lattix()
-        child = Lattix(key="child", parent=parent)
+        child = Lattix(data={"a": 1}, key="child", parent=parent)
         parent._children["child"] = child
         object.__setattr__(child, "_detached", False)
+
+        child_ref = weakref.ref(child)
+
+        del child
+        del parent
+        gc.collect()
+
+        assert child_ref() is None
+
+    def test_del_is_finalizing(self):
+        d = Lattix(key="shutdown_test")
         
-        # Force deletion
-        with caplog.at_level(logging.WARNING):
-            child.__del__()
-            # Since __del__ might be tricky with GC, calling it directly ensures coverage
-            assert "Undetached Lattix destroyed" in caplog.text
+        with patch("sys.is_finalizing", return_value=True), \
+             patch(f"{top_mod}.structures.mapping.logger") as mock_logger:
+            d.__del__()
+            mock_logger.isEnabledFor.assert_not_called()
+    
+    def test_del_safety_sys_none(self):
+        node = Lattix(key="dead_sys")
+
+        with patch(f"{top_mod}.structures.mapping.sys", None), \
+             patch(f"{top_mod}.structures.mapping.logger") as mock_logger:
+           
+            try:
+               node.__del__()
+            except Exception as e:
+                pytest.fail(f"__del__ raised {type(e).__name__} when sys was None")
+            mock_logger.isEnabledFor.assert_not_called()
+    
+    def test_circular_reference_cleanup(self):
+        import weakref
+        import gc
+
+        root = Lattix()
+        child = Lattix()
+        child.attach(root)
+        root["link"] = child
         
+        assert root.is_cycled() 
+
+        root_ref = weakref.ref(root)
+        child_ref = weakref.ref(child)
+        
+        del root
+        del child
+        
+        # Since they have circular refs, they won't die until GC runs
+        gc.collect()
+        
+        assert root_ref() is None
+        assert child_ref() is None
+
 
 # ---------- Tests 15: Edge Cases ----------
 

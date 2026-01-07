@@ -1,10 +1,9 @@
 # Lattix
 
-[![PyPI version](https://img.shields.io/badge/pypi-v0.1.0-blue.svg)](https://pypi.org/project/py-lattix/)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Lattix** is a high-performance, hierarchical, and thread-safe mapping library for Python. It combines the flexibility of a dictionary with the power of tree-like structures, offering dot-access, path-traversal, and seamless integration with the modern Python data stack (NumPy, Pandas, PyTorch).
+**Lattix** is a hierarchical and thread-safe mapping library for Python. It combines the flexibility of a dictionary with the power of tree-like structures, offering dot-access, path-traversal, and support integration with the modern Python data stack (NumPy, Pandas, PyTorch).
 
 ## Key Features
 

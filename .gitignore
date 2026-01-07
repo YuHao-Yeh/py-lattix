@@ -1,8 +1,13 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 
+# Distribution / packaging
+build/
+dist/
+
 # Unit test / coverage reports
 htmlcov/
+.nox/
 .coverage
 .coverage.*
 .cache

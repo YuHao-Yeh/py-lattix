@@ -1217,9 +1217,11 @@ class Lattix(
         try:
             if sys.is_finalizing():
                 return
-            if not getattr(self, "_detached", True):
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(f"[DD:DEL] Undetached Lattix destroyed: {getattr(self, '_key', '?')!r}")
+            
+            if (self.parent is not None) and not self._detached:
+                logger.debug(f"[DD:DEL] Undetached Lattix destroyed: {getattr(self, '_key', '?')!r}")
+
+            self._children = {}
         except:
             pass
 

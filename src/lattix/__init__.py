@@ -26,11 +26,13 @@ from .structures.mapping import Lattix
 from .utils import exceptions
 
 # --- Version Metadata ---
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "YuHao-Yeh"
 
 
 __all__ = [
+    "__version__",
+    
     # Core Class
     "Lattix",
     "LattixNode",
