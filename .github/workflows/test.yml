@@ -66,8 +66,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[test]
       
-      - name: Run tests
-        run: pytest -q
+      - name: Run tests with coverage
+        run: pytest --cov=src/lattix --cov-report=xml
 
       - name: Run diagnostics
         run: python -m lattix
@@ -76,4 +76,13 @@ jobs:
         run: |
           pip install build
           python -m build
+
+      - name: Upload coverage to Coveralls
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+          format: cobertura
+          # debug: true
           

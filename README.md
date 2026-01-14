@@ -1,7 +1,7 @@
 # Lattix
 
 <!-- GitHub & CI Status -->
-[![CI](https://github.com/YuHao-Yeh/py-lattix/actions/workflows/ci.yml/badge.svg)](https://github.com/YuHao-Yeh/py-lattix/actions)
+[![Tests](https://github.com/YuHao-Yeh/py-lattix/actions/workflows/test.yml/badge.svg)](https://github.com/YuHao-Yeh/py-lattix/actions)
 [![Coverage Status](https://coveralls.io/repos/github/YuHao-Yeh/py-lattix/badge.svg)](https://coveralls.io/github/YuHao-Yeh/py-lattix)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: BSD](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
@@ -45,8 +45,6 @@ conf.database.credentials.to_dict()
 ---
 
 ## Installation
-
-> **Note**: Lattix will soon be available on PyPI. 
 
 ### 1. Install via PyPI (Recommended)
 ```bash
