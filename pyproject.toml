@@ -72,10 +72,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YuHao-Yeh/py-lattix"
-Documentation = "https://github.com/YuHao-Yeh/py-lattix#readme"
-Repository = "https://github.com/YuHao-Yeh/py-lattix"
-Issues = "https://github.com/YuHao-Yeh/py-lattix/issues"
+Homepage = "https://github.com/YuHao-Yeh/Lattix"
+Documentation = "https://github.com/YuHao-Yeh/Lattix#readme"
+Repository = "https://github.com/YuHao-Yeh/Lattix"
+Issues = "https://github.com/YuHao-Yeh/Lattix/issues"
 
 # ---------- Hatch Configuration ----------
 [tool.hatch.version]
