@@ -1,0 +1,183 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ----------- Metadata Configuration ----------
+[project]
+name = "py-lattix"
+dynamic = ["version"]
+description = "A high-performance, hierarchical, thread-safe mapping library for Python."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Yeh Yuhao", email = "yuhao200.ok@gmail.com"}
+]
+keywords = ["hierarchical", "config", "mapping", "dot-access", "attrdict", "thread-safe"]
+
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Scientific/Engineering",
+  "Typing :: Typed",
+]
+
+dependencies = [
+    "typing-extensions>=4.0; python_version <= '3.10'",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+msgpack = ["msgpack>=1.0"]
+orjson = ["orjson>=3.0"]
+xarray = ["xarray"]
+torch = ["torch"]
+
+full = [
+  "py-lattix[yaml,msgpack,orjson]",
+  "numpy",
+  "pandas",
+]
+
+test = [
+  "py-lattix[full]",
+  "pytest",
+  "pytest-cov",
+  "typing_extensions>=4.0",
+]
+
+check = [
+  "ruff",
+  "mypy>=1.11",
+  "types-PyYAML",
+]
+
+dev = [
+  "py-lattix[test,check]",
+  "black",
+  "nox",
+  "pre-commit",
+]
+
+[project.urls]
+Homepage = "https://github.com/YuHao-Yeh/py-lattix"
+Documentation = "https://github.com/YuHao-Yeh/py-lattix#readme"
+Repository = "https://github.com/YuHao-Yeh/py-lattix"
+Issues = "https://github.com/YuHao-Yeh/py-lattix/issues"
+
+# ---------- Hatch Configuration ----------
+[tool.hatch.version]
+path = "src/lattix/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "README.md",
+  "LICENSE"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lattix"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.envs.default.env-vars]
+PYTHONPATH = "src"
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+lint = "ruff check ."
+format = "black ."
+typecheck = "mypy src"
+
+fmt = ["black .", "ruff --fix ."]
+check = ["black --check .", "ruff ."]
+
+check_all = [
+  "ruff check .",
+  "black --check .",
+  "mypy src",
+  "pytest -q"
+]
+
+ci = "nox"
+
+# ---------- Pytest Configuration ----------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--cov=src/lattix --cov-report=term-missing"
+filterwarnings = [
+    "ignore::DeprecationWarning"
+]
+
+# ---------- Coverage Configuration ----------
+[tool.coverage.run]
+source = ["src/lattix"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+]
+
+# ---------- Ruff Configuration ----------
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP"]
+ignore = ["E501", "E731", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lattix"]
+
+# ---------- Black Configuration ----------
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310", "py311", "py312", "py313"]
+include = ".pyi?$"
+
+# ---------- Mypy Configuration ----------
+[tool.mypy]
+python_version = "3.9"
+strict = true
+files = "src"
+ignore_missing_imports = true
+
+check_untyped_defs = true
+disallow_untyped_defs = false
+disallow_any_generics = true
+disallow_subclassing_any = true
+
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+
+no_implicit_optional = true
+strict_optional = true
+
+show_error_codes = true
+pretty = true

@@ -1,0 +1,29 @@
+default_language_version:
+  python: python
+
+repos:
+  - repo: local
+    hooks:
+      - id: hatch-format
+        name: hatch format
+        entry: hatch
+        language: system
+        args: ["run", "format"]
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-lint
+        name: hatch lint
+        entry: hatch
+        language: system
+        args: ["run", "lint"]
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-typecheck
+        name: hatch typecheck
+        entry: hatch
+        language: system
+        args: ["run", "typecheck"]
+        types: [python]
+        pass_filenames: false

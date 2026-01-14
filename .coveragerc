@@ -1,0 +1,18 @@
+[run]
+source = .
+branch = True
+
+
+[report]
+omit =
+    src/lattix/adapters/legacy.py
+    
+exclude_lines =
+    pragma: no cover
+    noqa: F401
+    if __name__ == .__main__.:
+    @(abc\.)?abstractmethod
+    if logger.isEnabledFor
+    if TYPE_CHECKING:
+
+show_missing = True
