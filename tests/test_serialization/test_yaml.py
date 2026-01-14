@@ -212,7 +212,6 @@ class TestYAMLSerialization:
                 with patch.object(
                     safe_yaml.EnhancedSafeLoader, "add_constructor"
                 ) as mock_add_cons:
-
                     safe_yaml.register_type(
                         "!dummy", not_a_class, dummy_rep, dummy_cons
                     )
@@ -278,7 +277,6 @@ class TestYAMLSerialization:
 
         # 1. Patch HAS_YAML in the compat module to be False
         with patch(f"{top_mod}.utils.compat.HAS_YAML", False):
-
             # 2. Reload safe_yaml
             importlib.reload(safe_yaml)
 

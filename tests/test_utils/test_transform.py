@@ -73,7 +73,6 @@ class TestDeepConvert:
         assert result == "{'a': 1}"
 
     def test_mapping_unwrap_fail_not_list_or_tuple(self):
-
         class WeirdContainer:
             def __init__(self, iterable):
                 self.data = ["I am a string, not a tuple"]
@@ -98,7 +97,6 @@ class TestDeepConvert:
         assert result[0] == "I am a string, not a tuple"
 
     def test_mapping_unwrap_fail_wrong_length(self):
-
         class TripleContainer:
             def __init__(self, iterable):
                 self.data = [(1, 2, 3)]
@@ -277,7 +275,6 @@ class TestFlattenUnflatten:
 
 
 class TestPyVersionImport:
-
     def test_python_old_legacy_less_than_39(self):
         # Mock version to 3.8
         with patch.object(sys, "version_info", (3, 8)):

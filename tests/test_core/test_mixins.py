@@ -42,7 +42,6 @@ class ConcreteNode(mixins.ThreadingMixin):
 
 
 class TestThreadingMixin:
-
     # --- 1. Init ---
 
     def test_init_defaults(self):
@@ -310,7 +309,6 @@ class ConcreteLogical(mixins.LogicalMixin, dict):
 
 
 class TestLogicalMixin:
-
     def test_and(self):
         l1 = ConcreteLogical({"a": 1, "b": 2})
         d2 = {"b": 3, "c": 4}
@@ -433,7 +431,6 @@ class ConcreteFormatterChildren(ConcreteFormatter):
 
 
 class TestFormatterMixin:
-
     @pytest.fixture
     def obj(self) -> ConcreteFormatter:
         """A sample object inheriting from FormatterMixin."""
@@ -496,7 +493,6 @@ class TestFormatterMixin:
 
         with patch(f"{top_mod}.utils.compat.HAS_YAML", True):
             with patch(f"{top_mod}.utils.compat.yaml", mock_yaml):
-
                 output = obj.pprint(style="yaml")
                 assert "a: 1" in output
                 mock_yaml.safe_dump.assert_called_once()
@@ -508,7 +504,6 @@ class TestFormatterMixin:
 
         with patch(f"{top_mod}.utils.compat.HAS_YAML", True):
             with patch(f"{top_mod}.utils.compat.yaml", mock_yaml):
-
                 output = obj.pprint(style="yaml")
                 assert "<YAML Serialization Error: Boom>" in output
 
@@ -597,7 +592,6 @@ class TestFormatterMixin:
 
         with patch(f"{top_mod}.utils.compat.HAS_PANDAS", True):
             with patch(f"{top_mod}.utils.compat.pandas", mock_pd):
-
                 f = ConcreteFormatter({"df": MockDataFrame()})
                 output = f.pprint(style="default", colored=False)
 
@@ -618,7 +612,6 @@ class TestFormatterMixin:
 
         with patch(f"{top_mod}.utils.compat.HAS_PANDAS", True):
             with patch(f"{top_mod}.utils.compat.pandas", mock_pd):
-
                 f = ConcreteFormatter({"series": MockSeries()})
                 output = f.pprint(style="default", colored=False)
 
@@ -642,7 +635,6 @@ class TestFormatterMixin:
 
         with patch(f"{top_mod}.utils.compat.HAS_PANDAS", True):
             with patch(f"{top_mod}.utils.compat.pandas", mock_pd):
-
                 f = ConcreteFormatter({"df": MockDataFrame()})
                 output = f.pprint(style="default", colored=False)
                 assert "MockDataFrame string" in output
@@ -670,7 +662,6 @@ class TestFormatterMixin:
 
         with patch(f"{top_mod}.utils.compat.HAS_NUMPY", True):
             with patch(f"{top_mod}.utils.compat.numpy", mock_np):
-
                 f = ConcreteFormatter({"arr": MockArray()})
                 output = f.pprint(style="default", colored=False)
 

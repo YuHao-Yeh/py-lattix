@@ -14,7 +14,6 @@ from src.lattix.utils.exceptions import (
 
 
 class TestLattixNode:
-
     # --- 1. Basic Initialization & Properties ---
 
     def test_node_init_and_properties(self):

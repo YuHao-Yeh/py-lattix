@@ -148,7 +148,6 @@ class TestInit:
 
 
 class TestBasicMapping:
-
     # --- 1. getitem ---
 
     def test_getitem_path(self):
@@ -294,7 +293,6 @@ class TestHierarchical:
 
 
 class TestDotAccess:
-
     # --- 1. GET/SET attr ---
 
     def test_dot_access_get_set(self):
@@ -409,7 +407,6 @@ class TestLazyCreate:
 
 
 class TestBasicMappingInterface:
-
     # --- 1. contains ---
 
     def test_contains(self):
@@ -618,7 +615,6 @@ class TestRepr:
 
 
 class TestLogicalOP:
-
     # --- 1. and ---
 
     def test_intersection_and(self):
@@ -749,7 +745,6 @@ class TestLogicalOP:
 
 
 class TestMergeJoin:
-
     # --- 1. addition ---
 
     def test_add_operator(self):
@@ -868,7 +863,6 @@ class TestMergeJoin:
 
 
 class TestSerialization:
-
     # --- 1. dict ---
 
     def test_to_dict(self):
@@ -1291,7 +1285,6 @@ class TestCloning:
         assert d4._lock is d._lock
 
     def test_clone_deep_mapping(self):
-
         # 1. Mapping
         class UninstantiableMap(dict):
             def __init__(self, required_arg):
@@ -1462,7 +1455,6 @@ class TestTraversals:
 
 
 class TestLifeCycle:
-
     # --- 1. threading ---
 
     def test_locking_enabled_init(self):
@@ -1722,13 +1714,13 @@ class TestEdgeCase:
 
         result = root._walk_path("sub/raw_dict")
 
-        assert isinstance(
-            result, Lattix
-        ), "The raw dict should have been promoted to Lattix"
+        assert isinstance(result, Lattix), (
+            "The raw dict should have been promoted to Lattix"
+        )
         assert result["target_key"] == "target_value"
-        assert (
-            result.parent is sub_node
-        ), "The promoted node should be linked to its parent"
+        assert result.parent is sub_node, (
+            "The promoted node should be linked to its parent"
+        )
 
         assert isinstance(sub_node_children["raw_dict"], Lattix)
 

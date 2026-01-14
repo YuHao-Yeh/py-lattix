@@ -69,7 +69,6 @@ class TestHelpers:
         # Mock global HAS_PANDAS to True
         with patch(f"{utils_mod}.inspection.HAS_PANDAS", True):
             with patch(f"{utils_mod}.inspection.pd", fake_pd):
-
                 df = fake_pd.DataFrame()
                 assert inspection.is_scalar(df) is True
                 assert inspection.is_scalar(object()) is False
@@ -81,7 +80,6 @@ class TestHelpers:
         # Mock global HAS_NUMPY to True
         with patch(f"{utils_mod}.inspection.HAS_NUMPY", True):
             with patch(f"{utils_mod}.inspection.np", fake_np):
-
                 arr = fake_np.ndarray()
                 assert inspection.is_scalar(arr) is True
 
@@ -95,7 +93,6 @@ class TestHelpers:
 
 
 class TestPyVersionImport:
-
     def test_python_old_legacy_less_than_39(self):
         # Mock version to 3.8
         with patch.object(sys, "version_info", (3, 8)):

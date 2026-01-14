@@ -201,7 +201,6 @@ class TestMutableLattixMapping:
 
 # ---------- Tests 3: Python Version ----------
 class TestPyVersionImport:
-
     def test_python_old_legacy_less_than_39(self):
         # Mock version to 3.8
         with patch.object(sys, "version_info", (3, 8)):

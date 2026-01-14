@@ -25,7 +25,6 @@ def cleanup_module():
 
 # ---------- Tests 1: Typing in Different Python Version ----------
 class TestTypes:
-
     # def test_typing_extensions_import_success(self):
     #     if sys.version_info <= (3, 10):
     #         with patch.object(sys, "version_info", (3, 8)):
@@ -108,7 +107,6 @@ class TestTypes:
                 with patch(f"{top_mod}.utils.compat.HAS_NUMPY", has_numpy):
                     with patch(f"{top_mod}.utils.compat.pandas", fake_pd):
                         with patch(f"{top_mod}.utils.compat.numpy", fake_np):
-
                             importlib.reload(_typing)
                             importlib.reload(types_module)
 

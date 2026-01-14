@@ -103,7 +103,6 @@ class TestHasModule:
 
 
 class TestGetAttr:
-
     def test_lazy_import_success(self):
         """Test that accessing the attribute actually imports the module."""
         with patch("importlib.import_module") as mock_import:
