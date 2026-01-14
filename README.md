@@ -1,19 +1,39 @@
 # Lattix
 
-<!-- GitHub & CI Status -->
-[![Tests](https://github.com/YuHao-Yeh/py-lattix/actions/workflows/test.yml/badge.svg)](https://github.com/YuHao-Yeh/py-lattix/actions)
-[![Coverage Status](https://coveralls.io/repos/github/YuHao-Yeh/py-lattix/badge.svg)](https://coveralls.io/github/YuHao-Yeh/py-lattix)
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: BSD](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+<div align="center">
+  <!-- Metadata -->
+  <p>
+    <a href="https://pypi.org/project/py-lattix/">
+      <img src="https://img.shields.io/pypi/v/py-lattix.svg" alt="PyPI version">
+    </a>
+    <a href="https://pypi.org/project/py-lattix/">
+      <img src="https://img.shields.io/pypi/pyversions/py-lattix.svg" alt="Python versions">
+    </a>
+    <a href="https://opensource.org/licenses/BSD-3-Clause">
+      <img src="https://img.shields.io/badge/License-BSD%203--Clause-blue.svg" alt="License">
+    </a>
+  </p>
 
-<!-- PyPI Metadata -->
-[![PyPI Version](https://img.shields.io/pypi/v/py-lattix.svg)](https://pypi.org/project/py-lattix/)
-[![PyPI Python Versions](https://img.shields.io/pypi/pyversions/py-lattix.svg)](https://pypi.org/project/py-lattix/)
+  <!-- CI & Coverage -->
+  <p>
+    <a href="https://github.com/YuHao-Yeh/Lattix/actions">
+      <img src="https://github.com/YuHao-Yeh/Lattix/actions/workflows/test.yml/badge.svg" alt="Tests">
+    </a>
+    <a href="https://pypi.org/project/py-lattix">
+      <img src="https://img.shields.io/pypi/types/py-lattix" alt=Typing>
+    </a>
+    <a href="https://coveralls.io/github/YuHao-Yeh/py-lattix">
+      <img src="https://coveralls.io/repos/github/YuHao-Yeh/py-lattix/badge.svg" alt="Coverage">
+    </a>
+  </p>
 
-<!-- Quality & Tooling -->
-![mypy](https://img.shields.io/badge/mypy-strict-blue)
-![ruff](https://img.shields.io/badge/lint-ruff-red)
-![black](https://img.shields.io/badge/code%20style-black-000000)
+  <!-- Tooling -->
+  <p>
+    <img src="https://img.shields.io/badge/mypy-strict-blue" alt="mypy">
+    <img src="https://img.shields.io/badge/lint-ruff-red" alt="ruff">
+    <img src="https://img.shields.io/badge/code%20style-black-000000" alt="black">
+  </p>
+</div>
 
 
 **Lattix** is a high-performance, hierarchical mapping library designed for complex data pipelines and multi-threaded environments. It combines the flexibility of a dictionary with the power of tree-like structures, offering dot-access, path-traversal, and a unique **inherited locking mechanism** for atomic subtree operations.
@@ -58,17 +78,17 @@ pip install "py-lattix[full]"
 
 ```bash
 # Basic
-pip install git+https://github.com/YuHao-Yeh/py-lattix.git
+pip install git+https://github.com/YuHao-Yeh/Lattix.git
 
 # With all adapters (NumPy, Pandas, YAML support, etc.)
-pip install "py-lattix[full] @ git+https://github.com/YuHao-Yeh/py-lattix.git"
+pip install "py-lattix[full] @ git+https://github.com/YuHao-Yeh/Lattix.git"
 ```
 
 ### 3. Install from Source
 
 ```bash
 # 1. Clone the repository
-$ git clone https://github.com/YuHao-Yeh/py-lattix
+$ git clone https://github.com/YuHao-Yeh/Lattix
 $ cd py-lattix
 
 # 2. Install in editable mode
@@ -227,7 +247,7 @@ Lattix is released under the **BSD License**. See the [LICENSE](LICENSE) for det
 Contributions are welcome! Please feel free to submit a Pull Request or open an issue on GitHub.
 
 We maintain a high test coverage. To run the suite:
-1. Clone the repo: `git clone https://github.com/YuHao-Yeh/py-lattix`
+1. Clone the repo: `git clone https://github.com/YuHao-Yeh/Lattix`
 2. Install dev dependencies: `pip install -e ".[test]"`
 3. Run tests: `pytest`
 4. Ensure typing is correct: `mypy src/lattix`
