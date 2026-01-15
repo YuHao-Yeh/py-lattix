@@ -22,7 +22,7 @@ jobs:
           cache: 'pip'
 
       - name: Install tools
-        run: pip install ruff mypy types-PyYAML .[test,full]
+        run: pip install ruff black mypy types-PyYAML .[test,full]
 
       - name: run ruff
         run: ruff check .
