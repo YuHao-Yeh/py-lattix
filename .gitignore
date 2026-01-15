@@ -27,5 +27,4 @@ uv.lock
 # other files
 tmp/
 tmp*
-analysis/
 run/

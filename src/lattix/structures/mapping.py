@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import weakref
 from copy import deepcopy
 from threading import RLock
 from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Mapping, TypeVar, Union, cast
@@ -160,7 +161,7 @@ class Lattix(
         self_set(self, "_frozen", frozen)
 
         # --- inlined ThreadingMixin init ---
-        self_set(self, "_locking_enabled", False)
+        self_set(self, "_locking_enabled", enable_lock)
         self_set(self, "_lock", None)
         self_set(self, "_detached", True)
 
@@ -169,9 +170,13 @@ class Lattix(
         self_set(self, "_children", {})
         self_set(self, "_parent", None)
 
-        self._init_threading(parent, enable_lock)
         if parent is not None:
-            LattixNode.attach(self, parent)
+            self_set(self, "_parent", weakref.ref(parent))
+            self.attach_thread(parent)
+        else:
+            self_set(self, "_parent", None)
+            self._validate_bool(enable_lock)
+            self_set(self, "_lock", RLock() if enable_lock else None)
 
         if data:
             if isinstance(data, Mapping):
@@ -534,7 +539,7 @@ class Lattix(
 
             final_val = value
         elif isinstance(value, Mapping):
-            self.pop(key, None)
+            self._children.pop(key, None)
             final_val = cls(
                 value,
                 key=key,

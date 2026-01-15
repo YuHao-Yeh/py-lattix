@@ -74,23 +74,21 @@ class TestHelpers:
                 assert inspection.is_scalar(object()) is False
 
     def test_is_scalar_numpy(self):
-        fake_np = MagicMock()
-        fake_np.ndarray = type("FaleNDArray", (), {})
+        fake_nd = type("FaleNDArray", (), {})
 
         # Mock global HAS_NUMPY to True
         with patch(f"{utils_mod}.compat.HAS_NUMPY", True):
-            with patch(f"{utils_mod}.compat.numpy", fake_np):
-                arr = fake_np.ndarray()
+            with patch(f"{utils_mod}.inspection._NDARRAY", fake_nd):
+                arr = fake_nd()
                 assert inspection.is_scalar(arr) is True
 
     def test_is_scalar_torch(self):
-        fake_tm = MagicMock()
-        fake_tm.Tensor = type("FakeTensor", (), {})
+        fake_tensor = type("FakeTensor", (), {})
 
         # Mock global HAS_TORCH to True
-        with patch(f"{utils_mod}.compat.HAS_TORCH", True):
-            with patch(f"{utils_mod}.inspection.tm", fake_tm):
-                tensor = fake_tm.Tensor()
+        with patch(f"{utils_mod}.inspection._HAS_TORCH", True):
+            with patch(f"{utils_mod}.inspection._TENSOR", fake_tensor):
+                tensor = fake_tensor()
                 assert inspection.is_scalar(tensor) is True
 
     def test_is_scalar_xarray(self):
@@ -99,7 +97,7 @@ class TestHelpers:
         fake_xr.Dataset = type("FakeDataset", (), {})
 
         # Mock global HAS_XARRAY to True
-        with patch(f"{utils_mod}.compat.HAS_XARRAY", True):
+        with patch(f"{utils_mod}.inspection._HAS_XARRAY", True):
             with patch(f"{utils_mod}.inspection.xr", fake_xr):
                 da = fake_xr.DataArray()
                 assert inspection.is_scalar(da) is True

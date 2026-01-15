@@ -231,12 +231,27 @@ Run internal doctests to verify library integrity:
 python -m lattix --test
 ```
 
+## Performance
+Lattix is designed to be efficient while maintaining a rich feature set (lock inheritance, parent tracking, and data science adapters). In benchmarks involving 100,000 iterations of deep-tree operations, Lattix provides a high-performance alternative to feature-heavy wrappers.
+
+| Library | Initialization | Read (Dot) | Write (Dot) |
+| :--- | :--- | :--- | :--- |
+| `dict` (Standard) | 0.006s | N/A | N/A |
+| **Lattix** | **1.242s** | **0.156s** | **0.199s** |
+| `python-box` | 2.092s | 0.122s | 0.278s |
+| `easydict` | 0.673s | 0.005s | 0.044s |
+
+> [!NOTE]
+> Plain `dict` and thin wrappers like `easydict` will generally be faster for simple lookups as they do not manage hierarchical metadata or thread synchronization. Lattix is optimized specifically for complex, multi-threaded data trees.
+
+*Run the full suite: `python analysis/benchmark.py`*
+
 ---
 
 ## Similar Projects
 
 - [addict](https://github.com/mewwts/addict): Lightweight recursive dictionary with dot-access.
-- [Easydict](https://github.com/XuehaiPan/TreeDict): A fast and full-featured dict-like tree container.
+- [Easydict](https://github.com/XuehaiPan/TreeDict): Simple access to dict values as attributes
 - [python-box](https://github.com/cdgriffith/Box): Robust dictionary wrapper with path and dot-access support.
 
 ## License

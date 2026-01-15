@@ -21,9 +21,15 @@ else:
 
 __all__ = ["is_primitive", "is_scalar", "scan_class_attrs"]
 
+_HAS_PANDAS = compat.HAS_PANDAS
+_HAS_NUMPY = compat.HAS_NUMPY
+_HAS_TORCH = compat.HAS_TORCH
+_HAS_XARRAY = compat.HAS_XARRAY
 pandas = pd = compat.pandas
-torch = tm = compat.torch
 xarray = xr = compat.xarray
+
+_NDARRAY = compat.numpy.ndarray if _HAS_NUMPY else type(None)
+_TENSOR = compat.torch.Tensor if _HAS_TORCH else type(None)
 
 
 # ======================================================
@@ -62,18 +68,18 @@ def is_scalar(obj: Any) -> TypeGuard[ScalarTypes]:
         return True
 
     # 2. Check Pandas
-    if compat.HAS_PANDAS and isinstance(obj, (pd.DataFrame, pd.Series)):
+    if _HAS_PANDAS and isinstance(obj, (pd.DataFrame, pd.Series)):
         return True
 
     # 3. Check Numpy
-    if compat.HAS_NUMPY and isinstance(obj, compat.numpy.ndarray):
+    if _HAS_NUMPY and isinstance(obj, _NDARRAY):
         return True
 
-    if compat.HAS_TORCH and isinstance(obj, tm.Tensor):
+    if _HAS_TORCH and isinstance(obj, _TENSOR):
         return True
 
     # 5. NEW: Check Xarray
-    if compat.HAS_XARRAY and isinstance(obj, (xr.DataArray, xr.Dataset)):
+    if _HAS_XARRAY and isinstance(obj, (xr.DataArray, xr.Dataset)):
         return True
 
     return False
