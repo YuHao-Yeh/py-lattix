@@ -118,6 +118,12 @@ else:
     if compat.HAS_NUMPY:
         _scalars.append(compat.numpy.ndarray)
 
+    if compat.HAS_TORCH:
+        _scalars.append(compat.torch.Tensor)
+
+    if compat.HAS_XARRAY:
+        _scalars.extend([compat.xarray.DataArray, compat.xarray.Dataset])
+
     if len(_scalars) == 1:
         ScalarTypes = _scalars[0]
     else:

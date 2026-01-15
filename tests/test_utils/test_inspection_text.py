@@ -67,7 +67,7 @@ class TestHelpers:
         fake_pd.Series = type("FakeSeries", (), {})
 
         # Mock global HAS_PANDAS to True
-        with patch(f"{utils_mod}.inspection.HAS_PANDAS", True):
+        with patch(f"{utils_mod}.compat.HAS_PANDAS", True):
             with patch(f"{utils_mod}.inspection.pd", fake_pd):
                 df = fake_pd.DataFrame()
                 assert inspection.is_scalar(df) is True
@@ -78,14 +78,35 @@ class TestHelpers:
         fake_np.ndarray = type("FaleNDArray", (), {})
 
         # Mock global HAS_NUMPY to True
-        with patch(f"{utils_mod}.inspection.HAS_NUMPY", True):
-            with patch(f"{utils_mod}.inspection.np", fake_np):
+        with patch(f"{utils_mod}.compat.HAS_NUMPY", True):
+            with patch(f"{utils_mod}.compat.numpy", fake_np):
                 arr = fake_np.ndarray()
                 assert inspection.is_scalar(arr) is True
 
+    def test_is_scalar_torch(self):
+        fake_tm = MagicMock()
+        fake_tm.Tensor = type("FakeTensor", (), {})
+
+        # Mock global HAS_TORCH to True
+        with patch(f"{utils_mod}.compat.HAS_TORCH", True):
+            with patch(f"{utils_mod}.inspection.tm", fake_tm):
+                tensor = fake_tm.Tensor()
+                assert inspection.is_scalar(tensor) is True
+
+    def test_is_scalar_xarray(self):
+        fake_xr = MagicMock()
+        fake_xr.DataArray = type("FakeDataArray", (), {})
+        fake_xr.Dataset = type("FakeDataset", (), {})
+
+        # Mock global HAS_XARRAY to True
+        with patch(f"{utils_mod}.compat.HAS_XARRAY", True):
+            with patch(f"{utils_mod}.inspection.xr", fake_xr):
+                da = fake_xr.DataArray()
+                assert inspection.is_scalar(da) is True
+
     def test_is_scalar_false(self):
-        with patch(f"{utils_mod}.inspection.HAS_PANDAS", False):
-            with patch(f"{utils_mod}.inspection.HAS_NUMPY", False):
+        with patch(f"{utils_mod}.compat.HAS_PANDAS", False):
+            with patch(f"{utils_mod}.compat.HAS_NUMPY", False):
                 assert inspection.is_scalar(object()) is False
 
 

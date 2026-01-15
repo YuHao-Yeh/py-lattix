@@ -28,7 +28,7 @@ from .structures.mapping import Lattix
 from .utils import exceptions
 
 # ========== Version Metadata ==========
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "YuHao-Yeh"
 
 __all__ = [

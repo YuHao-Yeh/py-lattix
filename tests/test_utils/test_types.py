@@ -92,8 +92,13 @@ class TestTypes:
             ),
         ],
     )
-    @pytest.mark.parametrize("has_pandas, has_numpy", [(True, True), (False, False)])
-    def test_scalar_types_matrix(self, py_version, has_pandas, has_numpy):
+    @pytest.mark.parametrize(
+        "has_pandas, has_numpy, has_torch, has_xarray",
+        [(True, True, True, True), (False, False, False, False)],
+    )
+    def test_scalar_types_matrix(
+        self, py_version, has_pandas, has_numpy, has_torch, has_xarray
+    ):
         """
         Test the combinations of Pandas/Numpy availability.
         """
@@ -101,25 +106,46 @@ class TestTypes:
             DataFrame=type("DF", (), {}), Series=type("SR", (), {})
         )
         fake_np = SimpleNamespace(ndarray=type("ND", (), {}))
+        fake_tm = SimpleNamespace(Tensor=type("TS", (), {}))
+        fake_xr = SimpleNamespace(
+            DataArray=type("DA", (), {}), Dataset=type("DS", (), {})
+        )
 
         with patch.object(sys, "version_info", py_version):
             with patch(f"{top_mod}.utils.compat.HAS_PANDAS", has_pandas):
                 with patch(f"{top_mod}.utils.compat.HAS_NUMPY", has_numpy):
-                    with patch(f"{top_mod}.utils.compat.pandas", fake_pd):
-                        with patch(f"{top_mod}.utils.compat.numpy", fake_np):
-                            importlib.reload(_typing)
-                            importlib.reload(types_module)
+                    with patch(f"{top_mod}.utils.compat.HAS_TORCH", has_torch):
+                        with patch(f"{top_mod}.utils.compat.HAS_XARRAY", has_xarray):
+                            with patch(f"{top_mod}.utils.compat.pandas", fake_pd):
+                                with patch(f"{top_mod}.utils.compat.numpy", fake_np):
+                                    with patch(
+                                        f"{top_mod}.utils.compat.torch", fake_tm
+                                    ):
+                                        with patch(
+                                            f"{top_mod}.utils.compat.xarray", fake_xr
+                                        ):
+                                            importlib.reload(_typing)
+                                            importlib.reload(types_module)
 
-                            # Ensure ScalarTypes was created
-                            assert types_module.ScalarTypes is not None
+                                            # Ensure ScalarTypes was created
+                                            assert types_module.ScalarTypes is not None
 
-                            # If both false, ScalarTypes should just be AtomicTypes
-                            if not has_pandas and not has_numpy:
-                                assert (
-                                    types_module.ScalarTypes == types_module.AtomicTypes
-                                )
-                            else:
-                                assert hasattr(types_module.ScalarTypes, "__origin__")
+                                            # If both false, ScalarTypes should just be AtomicTypes
+                                            if not (
+                                                has_pandas
+                                                or has_numpy
+                                                or has_torch
+                                                or has_xarray
+                                            ):
+                                                assert (
+                                                    types_module.ScalarTypes
+                                                    == types_module.AtomicTypes
+                                                )
+                                            else:
+                                                assert hasattr(
+                                                    types_module.ScalarTypes,
+                                                    "__origin__",
+                                                )
 
     def test_registry_types_compatibility(self):
         """Test registry types."""

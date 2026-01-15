@@ -1714,13 +1714,13 @@ class TestEdgeCase:
 
         result = root._walk_path("sub/raw_dict")
 
-        assert isinstance(result, Lattix), (
-            "The raw dict should have been promoted to Lattix"
-        )
+        assert isinstance(
+            result, Lattix
+        ), "The raw dict should have been promoted to Lattix"
         assert result["target_key"] == "target_value"
-        assert result.parent is sub_node, (
-            "The promoted node should be linked to its parent"
-        )
+        assert (
+            result.parent is sub_node
+        ), "The promoted node should be linked to its parent"
 
         assert isinstance(sub_node_children["raw_dict"], Lattix)
 

@@ -21,10 +21,9 @@ else:
 
 __all__ = ["is_primitive", "is_scalar", "scan_class_attrs"]
 
-HAS_NUMPY = compat.HAS_NUMPY
-HAS_PANDAS = compat.HAS_PANDAS
-numpy = np = compat.numpy
 pandas = pd = compat.pandas
+torch = tm = compat.torch
+xarray = xr = compat.xarray
 
 
 # ======================================================
@@ -48,9 +47,9 @@ def is_primitive(obj: Any) -> TypeGuard[AtomicTypes]:
 def is_scalar(obj: Any) -> TypeGuard[ScalarTypes]:
     """Check if an object is a scalar value, including Data Science types.
 
-    In addition to basic primitives, this function recognizes NumPy ndarrays
-    and Pandas DataFrames/Series as scalar "leaf" units in the context of
-    traversal logic.
+    In addition to basic primitives, this function recognizes NumPy ndarrays,
+    Pandas DataFrames/Series, Torch Tensors, and Xarray DataArray/Dataset as
+    scalar "leaf" units in the context of traversal logic.
 
     Args:
         obj: The object to inspect.
@@ -63,11 +62,18 @@ def is_scalar(obj: Any) -> TypeGuard[ScalarTypes]:
         return True
 
     # 2. Check Pandas
-    if HAS_PANDAS and isinstance(obj, (pd.DataFrame, pd.Series)):
+    if compat.HAS_PANDAS and isinstance(obj, (pd.DataFrame, pd.Series)):
         return True
 
     # 3. Check Numpy
-    if HAS_NUMPY and isinstance(obj, np.ndarray):
+    if compat.HAS_NUMPY and isinstance(obj, compat.numpy.ndarray):
+        return True
+
+    if compat.HAS_TORCH and isinstance(obj, tm.Tensor):
+        return True
+
+    # 5. NEW: Check Xarray
+    if compat.HAS_XARRAY and isinstance(obj, (xr.DataArray, xr.Dataset)):
         return True
 
     return False

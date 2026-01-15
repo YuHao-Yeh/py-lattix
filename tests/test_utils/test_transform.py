@@ -178,11 +178,12 @@ class TestSerialize:
 
     def test_iterable(self):
         """Test iterable serialization (skipping str/bytes)."""
-        data = [1, {2}, "keep_string"]
+        data = [1, {2}, (3, 4), "keep_string"]
         result = transform.serialize(data)
         assert result[0] == 1
-        assert isinstance(result[1], list)
-        assert result[2] == "keep_string"
+        assert isinstance(result[1], set)
+        assert isinstance(result[2], tuple)
+        assert result[3] == "keep_string"
 
     def test_object_with_dict(self):
         """Test generic object with __dict__."""

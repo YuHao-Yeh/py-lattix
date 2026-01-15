@@ -121,6 +121,8 @@ def serialize(obj: Any, _seen: set[int] | None = None) -> Any:
         - Circular Refs: Returns a string marker indicating the circularity.
         - Adapters: Delegates to registered handlers if available.
         - Mappings: Recursively serializes keys (to str) and values.
+        - Sets: Recurseively serializes values into sets.
+        - Tuples: Recusively serialized values into tuples.
         - Iterables: Serialized into lists.
         - Objects: Serialized based on ``__dict__`` or ``__slots__``.
 
@@ -157,11 +159,19 @@ def serialize(obj: Any, _seen: set[int] | None = None) -> Any:
                 out[sk] = serialize(v, _seen)
             return out
 
-        # 5. Iterable (exclude str/bytes)
+        # 5. Set
+        if isinstance(obj, (set, frozenset)):
+            return {serialize(x, _seen) for x in obj}
+
+        # 6. Tuple
+        if isinstance(obj, tuple):
+            return tuple(serialize(x, _seen) for x in obj)
+
+        # 7. Iterable (exclude str/bytes)
         if isinstance(obj, Iterable):
             return [serialize(x, _seen) for x in obj]
 
-        # 6. Object with __dict__
+        # 8. Object with __dict__
         if hasattr(obj, "__dict__") and vars(obj):
             return {
                 k: serialize(v, _seen)
@@ -169,7 +179,7 @@ def serialize(obj: Any, _seen: set[int] | None = None) -> Any:
                 if not k.startswith("_")
             }
 
-        # 7. Object with __slots__
+        # 9. Object with __slots__
         if hasattr(obj, "__slots__"):
             return {
                 k: serialize(getattr(obj, k), _seen)
@@ -177,7 +187,7 @@ def serialize(obj: Any, _seen: set[int] | None = None) -> Any:
                 if not k.startswith("_") and hasattr(obj, k)
             }
 
-        # 8. Fallback
+        # 10. Fallback
         try:
             return str(obj)
         except Exception:
