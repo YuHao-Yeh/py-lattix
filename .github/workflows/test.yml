@@ -27,8 +27,8 @@ jobs:
       - name: run ruff
         run: ruff check .
       
-      - name: run ruff format check
-        run: ruff format --check .
+      - name: run black format check
+        run: black --check .
 
       - name: run mypy
         run: mypy src/lattix
